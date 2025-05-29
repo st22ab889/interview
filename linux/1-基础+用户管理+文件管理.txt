@@ -311,16 +311,24 @@ tar等常见的备份工具是不会保留目录和文件的ACL信息, 但可以
 	setfacl --restore acl.txt				#还原ACL权限
 	getfacl -R /tmp/dir						#查看ACL权限	
 
-
 =================================================================================================================================================
-
-
-
 
 lsof 	# 一个列出当前系统打开文件
 ssh -p 22 -i id-rsa opc@zkh.dpdns.org
 sudo -i
 ps aux
 ifconfig
+
+dd if=/dev/zero of=bin.img bs=1 count=3
+	dd：这是一个用于转换和复制文件的命令行工具。它可以从输入文件中读取数据，进行某种处理，然后写入输出文件。
+	if=/dev/zero	输入文件 (input file)：使用 /dev/zero 设备（生成无限的空字节流 0x00）
+	of=bin.img	输出文件 (output file)：创建名为 bin.img 的新文件
+	bs=1	块大小 (block size)：每次读写操作处理 1字节 数据
+	count=3	操作次数：总共复制 3个块
+	常见应用场景：
+		创建特定大小的空文件（例如：bs=1M count=100 创建 100MB 文件）
+		文件填充测试（用零填充文件系统空间）
+		低级设备操作（如创建 USB 启动盘：dd if=os.iso of=/dev/sdb bs=4M）
+		安全擦除（多次覆盖：dd if=/dev/urandom of=file bs=1M count=10）
 
 
