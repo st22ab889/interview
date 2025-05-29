@@ -1,0 +1,326 @@
+====================================================================基础、命令帮助===============================================================
+reboot	
+  -f: 强制，不调用shutdown
+  -p: 切断电源
+  
+shutdown
+	-r: reboot
+	-h: halt
+	-c：cancel
+	TIME：无指定，默认相当于+1（CentOS7）
+	now: 立刻,相当于+0
+	+#: 相对时间表示法，几分钟之后；例如 +3
+	hh:mm: 绝对时间表示，指明具体时间
+
+hash
+hash -d who
+hash -r
+
+type echo
+type -a echo
+
+enable
+
+who am i  # 等价whoami + tty
+who
+w
+
+alias
+alias cc='ps aux'					# 单用户持久化，放在用户的".bashrc"文件中; 所有用户持久化, 放在"/etc/bashrc"文件中 
+alias scandisk='echo - - - > /sys/class/scsi_host/host0/scan;echo - - - > /sys/class/scsi_host/host1/scan;echo - - - > /sys/class/scsi_host/host2/scan'
+命令前加\或''表示不用别名			# 优先级: 别名优先级 > 内部命令优先级 > 外部命令优先级
+命令后加\表示换行
+unalias cc
+
+命令风格:
+	ls -al							#  unix风格,短选项, 有些命令不要求顺序,有些命令要求顺序
+	ls --all						#  GNU风格, 长选项
+	ps  a							#  BSD风格, 
+
+hostnamectl
+hostname -I
+hostname -i
+hostname centos.local.host
+hostnamectl set-hostname NAME		# 支持CentOS7和Ubuntu18.04以上版本
+	
+dos2unix 文件名	
+unix2dos 文件名	
+hexdump -C 文件名
+
+`` 			# 不支持嵌套
+$()   		# 支持嵌套
+
+{1,a,3}
+{1..6}
+echo host{1,2,3}
+
+history
+!5
+!-3
+!h				#运行最近以h字母开头的命令
+
+
+lscpu
+arch
+uname -r 
+lsblk
+df	-i			# disk free , -i 显示分区中 Inodes 可用的数量
+free -h
+
+date
+clock			#查看硬件时间,  -s 以硬件时钟为准校正系统时钟, -w 以系统时钟为准校正硬件时钟
+timedatectl status | ist-timezones | set-timezone xxxx
+cal 05 2025
+
+echo -n
+echo -e
+
+file /usr/bin/hostname
+stat 文件名
+
+whatis rm    	# 新装的系统第一次运行这个命令没有作用,等会才有(系统需要下载安装). 也可运行 mandb 生成 wahtis 数据库, cendos6 之前用 makewhatis 数据库
+help 内部命令
+外部命令 --help
+man 		 	# 配合 whatis 命令使用
+
+=======================================================================文件管理==================================================================
+
+pwd
+ls -lSrah
+ls -lrtah
+ls -d
+ls -lR  /etc	# 查看文件夹以及里面子文件夹里面的文件
+ls -lF  /etc	# 给文件加上特殊的标识符, 打印出的文件名后面会加上 */=>@| 等字符, "|" 表示管道文件, "/" 表示目录 , "@" 表示衔接, "="表示socket文件
+ls -1			# 表示用1列来显示
+ls -d /etc/.*	# 表示不进入 /etc 查看 /etc 目录下的隐藏文件, 这里 -d 表示不进入到这个目录的内容,只看目录本身	
+ls -i			# 显示文件的节点号. 同一个分区中文件的节点号是唯一的, 不同分区中可以存在相同的节点号. 也就是说节点号是分区分配的
+basename
+dirname
+cd -			# 能回到上一个目录是因为有 $OLDPWD 变量记住了这个目录
+cd ~aaron		# 回到其它家目录
+cd -P 			# 切换至物理路径，而非软链接目录
+
+
+touch $(date -d "l year" +%F_%T).log
+> 创建文件			 		# 文件已存在会清空，也可以用于清理空间，Cshell不支持这种
+cat /dev/null > 文件 		# 清空文件具有通用性
+cp 一个源或多个源 目标  
+cp -t 目标  一个源或多个源 
+	-a 保留属性,经常使用 ，对拷贝衔接文件也非常有用
+	-r 和 —R 表示拷贝文件夹
+	-i 覆盖前询问
+	-u 只复制源比目标更新文件或目标不存在的文件
+	--backup=numbered 
+	-v 显示过程
+mv -v
+rename txt txt.bak *.txt	# 把以".txt"结尾的文件中的txt部分替换为txt.bak
+rm -rf / --no-preserve-root
+
+shred -v  文件				# 删除防止恢复	
+	-z 最后一次覆盖添加0,以隐藏覆盖操作
+	-u 用一些随机内容覆盖文件所在的节点和数据块，并删除文件
+	-n 指定覆盖文件内容的次数(默认是3次)	
+
+tree 
+	-d
+    -L
+	-P
+	
+mkdir 
+	-v
+	-p
+	-m
+	
+ln -s ./data/test.txt ./123.txt		# 不加 -s 就是创建硬链接
+
+======================================================================IO、重定向=================================================================
+
+ll /dev/std*     					# in-> 0, out -> 1,  err -> 2
+ll /proc/self/fd/*
+ls -al > /dev/pts/1                 # 重定向到 "/dev/pts/1"输出(同理实现标准输入，错误输出), 这个设备要先存在, 使用tty
+ls -al 1> /dev/pts/1				# "ls -al > /dev/pts/1"的标准写法
+cat > aaa.txt
+cat info.log >> aaa.txt 
+ls /data /error > f1.txt 2> f2.txt  # 假如 /error 不存在
+ls /data /error > f3.txt 2>&1		# 假如 /error 不存在 ， 注意和"ls /data /error 2>&1 > f3.txt"的区别		
+ls /data /error &> f4.txt			# 等价于 "ls /data /error >& f4.txt"
+yum intall nginx -y &> /dev/null	
+
+bc < bc.log							# 标准输入重定向. 支持标准输入的命令有 bc、cat、grep、tr 等
+bc 0< bc.log
+echo `seq -s+ 100` | bc				# seq 10
+
+cat > f5.txt <<EOF					# 多行一次性重定向 EOF=end of file
+内容
+内容
+内容	
+EOF									# EOF 前后不能带任何内容
+
+tr '12345' 'xyz'					# 替换. (tr用来转换和删除字符) 
+tr 'a-z' 'A-Z'						# 小写转大写
+tr -d 'abc'							# 删 abc
+tr -s 'a'							# 相同连续的缩为一个
+	df | tr -s ' ' 
+tr -d '\r' < win.txt > linux.txt	# 文本转换 
+
+
+ls | tee test.log					# 保存到文件 + 打印到屏幕 ,清空 test.log	 
+ls | tee -a test.log				# -a 追加内容到 test.log	
+
+
+wget "https://github.com/ylx2016/Linux-NetSpeed/raw/master/tcpx.sh" 
+wget -O tcp-plus.sh "https://github.com/ylx2016/Linux-NetSpeed/raw/master/tcpx.sh" 
+wget -O - "https://github.com/ylx2016/Linux-NetSpeed/raw/master/tcpx.sh"				# "-" 表示只显示内容,不保存到文件. 和 ">"相反
+
+
+====================================================================用户、组、权限===============================================================
+
+sudo -i
+id
+id ec2-user
+id -u ec2-user
+
+which passwd     # 查找 passwd 文件的路径，前提是该文件在 $PATH 路径下
+
+vipw		# 相当于 vim /etc/passwd
+vigr		# 相当于 vim /etc/group
+pwck		# 改了后校验 /etc/passwd 文件的格式
+grpck 		# 改了后校验 /etc/group 文件的格式
+
+getent  passwd			#  相当于 cat /etc/passwd
+getent  passwd 用户
+getent  shadow 
+getent  shadow 用户
+
+useradd -r -u 48 -g apache -s /sbin/nologin -d /var/www -c "Apache" apache	  	# -r 创建系统用户; -d HOME_DIR; -c 用户的注释信息; -p 加过密的密码. 重点
+usermod  -s /bin/false -a -G aaron,root xiaoming								# -a 表示追加
+	usermod -Groot zhang
+userdel  -fr 用户名
+
+
+newusers passwd 格式文件				# 了解
+echo username:passwd | chpasswd			# 了解
+
+groupadd -g 48 -r apache						
+groupmod -n newname -g 500 oldname		
+groupdel -f name						 
+newgrp 组名								# 临时切换当前登录用户的主组，可以使用exit退出来. (了解)
+groupmems -l -g 附加组名
+groupmems -a 用户 -g 附加组名			# groupmems -g root -a aaron
+groupmems -d 用户 -g 附加组名
+
+cat /dev/urandom | tr -dc '[:alnum:]' | head -c12			# -c 对除了指定字符之外的所有字符进行转换或删除.   "echo "abc123def456" | tr -cd '0-9'" 输出 123456
+
+change  							# 了解.  change -d 0 用户 ，下次登录强制重新改密码
+passwd 用户							# 重点
+passed -e 用户						# 下次登录强制重新改密码
+echo 密码 | passwd --stdin 用户		# ubuntu没有 --stdin 选项
+echo 用户:密码 | chpasswd			# ubuntu和Centos都支持
+
+
+====================================================================文件权限管理=================================================================
+
+su 用户名			# 保留当前一些身份信息，比如系统环境
+su - 用户名			# 不保留，完全切换 . -l 选项等价于 -
+su root -c cat /etc/shadow
+
+
+chown -R  组名  目录 			# 表示递归.重要.命令危险
+chown -R  :组名 目录 
+chgrp -R  组名  目录 			# chagrp 组名 文件
+
+chmod a-x  /opt/ss-server       # a=all, u=user ,g=grpup, o=other; +、-、=; r、w、x
+chmod u=,g=r,o=rwx 文件
+chmod a= 文件/文件夹			# 取消所有权限
+chmod 640 文件/文件夹
+chmod 600 文件/文件夹			# 一个文件能不能删除，不要看文件本身的权限，要看文件夹的权限. 用户对文件夹有写权限，就对里面的的文件有删除的权限
+	对于文件夹来说，要么rx都给，要么都不给，r控制的是能不能看文件，x控制的是能不能cd进目录; w控制的是能不能改文件.
+chmod -R 600 文件夹	
+chmod -R a+X dir				# 大写X，表示给只给这个目录里面的文件夹加x权限.(了解)
+
+umask							# 默认是 0022， 第一个0表示8进制
+	新建文件的默认权限: 666-umask，如果所得结果某位存在执行（奇数）权限，则将其权限+1,偶数不变
+	新建目录的默认权限: 777-umask
+umask 123						# 临时改 , 把这个命令放在家目录下的 .bashrc 中实现永久改
+
+
+===================================================================特殊权限(了解)================================================================
+
+[opc@docker-halo ~]$ ll `which passwd`
+-rwsr-xr-x. 1 root root 27856 Apr  1  2020 /usr/bin/passwd			# rwx变为了rws，s表示suid
+
+suid 当一个可运行的程序具有suid权限后，当普通用户运行的时候，这个身份就会临时变成这个文件所有者的身份.
+SGID
+	作用于二进制可执行文件上,用户将继承此程序所有组的权限
+	作于于目录上, 此目录中新建的文件的所属组将自动从此目录继承
+STICKY 作用于目录上,此目录中的文件只能由所有者自已来删除
+	
+
+[opc@docker-halo tmp]$ ll -d /tmp/
+drwxrwxrwt. 10 root root 250 May 29 08:11 /tmp/		# rwx 变为了 rwt, 这个t就是STICKY
+
+
+chmod u+s /usr/bin/vim  # 给文件加 suid 权限, 等价于 chmod 4755 /usr/bin/vim. 第一位 4 表示 suid 权限
+chmod g+s				# 等价 chmod 2755 
+chmod o+t			    # 等价 chmod 1755 
+
+===================================================================特殊属性(重点)================================================================
+
+lsattr 文件名		# 显示特定属性. 特殊属性可以控制和防止root误操作(防止删、改), 普通用户没有权限使用chattr
+chattr +i file		# 不能删除、改名、更改 ， chattr +i
+chattr +a file		# 只能追加，不能删除、改名， chattr -a
+
+
+==============================================================访问控制列表(ACL)(了解)============================================================
+
+[root@localhost ~]#cll /usr/bin/chmod
+-rwxr-xr-x+ 1 root root 58592 Aug 20  2019 /usr/bin/chmod    	# 权限后面有个 + 号表示文件有acl 
+
+
+传统linux只能对三类人设权限, acl可以只针对一个人设权限,ACL可以更加精确设置除了所有者,other以外的人单独设权限
+
+setfacl -m u:wang:rw text.txt    # m 表示修改
+setfacl -m u:zhang:- text.txt    # u:zhang:- 等价于 u:zhang:0
+getfacl text.txt
+
+一旦使用acl设置权限后,使用"ll text.txt"看到的组权限就不是真正的组权限，这里看到的权限是mask的权限(getfacl看到的mask的权限)
+	mask 权限指的是除了文件的 所有者以及other以外的 人的权限的最大权限.
+
+一旦设置acl后，对所属组缩所设的权限就是mask的权限，是所以改mask的权限可以如下：
+	chmod g=r text.txt	 # 设后如果有人(除了文件的 所有者以及other以外的 人)的权限比r大，会自动降级为r，mask相当于限高杆
+	
+setfacl -x u:wang text.txt						# 删用户的acl权限
+
+setfacl -b text.txt								# 删所有用户的acl权限	
+
+setfacl -m g:admins:rx text.txt   				# 设置组的acl权限，g:组名:rx 
+
+getfacl file1 | setfacl --set-file=- file2		# 复制一个文件的acl给新的文件
+
+setfacl --set u::rw,u:wang:rw,g::r,o::- file1	# --set 删除原有的ACL项都，用新的替代,注意:一定要包含UGO的设置，不能象-m一样只是添加ACL就可以
+
+acl生效顺序:  所有者 -> (acl)自定义用户 -> 所属组 -> (acl)自定义组 -> 其他人
+	
+
+cp -a file1  file2  	# -a 可保留acl权限, mv也支持
+
+tar等常见的备份工具是不会保留目录和文件的ACL信息, 但可以通过间接方法实现
+	getfacl -R /tmp/dir > acl.txt			#备份ACL
+	setfacl -R -b /tmp/dir					#消除ACL权限
+	setfacl -R --set-file=acl.txt /tmp/dir	#还原ACL权限
+	setfacl --restore acl.txt				#还原ACL权限
+	getfacl -R /tmp/dir						#查看ACL权限	
+
+
+=================================================================================================================================================
+
+
+
+
+lsof 	# 一个列出当前系统打开文件
+ssh -p 22 -i id-rsa opc@zkh.dpdns.org
+sudo -i
+ps aux
+ifconfig
+
+

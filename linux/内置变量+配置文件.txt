@@ -1,0 +1,30 @@
+
+echo $PATH	
+echo $SHELL
+echo $PS1
+echo $LANG
+echo $OLDPWD
+
+/etc/sudoers
+/etc/hostname
+/etc/shells
+/etc/os-release			# Debian系（如Ubuntu）还是Red Hat系（如CentOS、Fedora）的Linux发行版，通常都会包含这个文件
+/etc/redhat-release		# CentOS and reahat
+/etc/issue 				# 登录前提示文件
+/etc/motd   			# 登录后提示文件
+/etc/profile.d/env.sh	# 定义history的格式
+/boot/vmlinuz-3.10.0-1160.el7.x86_64
+/dev/sda
+/etc/DIR_COLORS
+/dev/zero				# 字符设备
+/etc/passwd				# 用户及其属性信息(名称、UID、主组ID等）
+/etc/shadow				# 用户密码及其相关属性(有效期)
+/etc/group
+/etc/gshadow
+/etc/default/useradd	# 创建用户模板文件
+/etc/login.defs			# 密码的模板文件
+/etc/shells
+/etc/skel				# 家目录的模板文件夹
+
+/etc/vimrc
+/home/aaron/.vimrc
