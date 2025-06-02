@@ -1,30 +1,88 @@
+Linux主要有三大派系:
+	红帽子派系(Redhat、Centos、OracleLinux)
+	Debian派(Ubuntu、Kali)
+	SUSE派系(SuSe、OpenSUSE)等
 
-echo $PATH	
-echo $SHELL
-echo $PS1
-echo $LANG
-echo $OLDPWD
+救援模式: 系统出现问题可以使用系统的救援模式去修复错误配置, 每个系统的救援模式方式可能不一样.
+    在VMvare安装centos，进入救援模式的方法:
+        Vmware 中要加载好光盘文件,且勾选启动时连接,实就是加载一个简化版的小linux，这个linux中带有一些基本命令
+        方法1: 点击"打开电源时进入固件" --> boot --> CD-ROM Deive --> Troubleshooting --> Rescue a CentOS system --> 1)Continue -> 回车 --> 运行命
+        方法2: 启动系统,在跑进度条的时候按下"Ctrl+G"或者点击启动页面(就是为了把鼠标定位到虚拟机中),然后按下 ESC 键 --> CD-ROM Drive --> 后面的操作和方法1一样
+    说明:
+		/mnt/sysimage  		这个目录就是原系统的根目录
+		/run/install/repo	这个目录是光盘挂载目录, 挂载目录的位置不是固定的，一样的系统安装在不同的虚拟机上挂载的位置可能都不一样.    
 
-/etc/sudoers
-/etc/hostname
-/etc/shells
-/etc/os-release			# Debian系（如Ubuntu）还是Red Hat系（如CentOS、Fedora）的Linux发行版，通常都会包含这个文件
-/etc/redhat-release		# CentOS and reahat
-/etc/issue 				# 登录前提示文件
-/etc/motd   			# 登录后提示文件
-/etc/profile.d/env.sh	# 定义history的格式
-/boot/vmlinuz-3.10.0-1160.el7.x86_64
-/dev/sda
-/etc/DIR_COLORS
-/dev/zero				# 字符设备
-/etc/passwd				# 用户及其属性信息(名称、UID、主组ID等）
-/etc/shadow				# 用户密码及其相关属性(有效期)
-/etc/group
-/etc/gshadow
-/etc/default/useradd	# 创建用户模板文件
-/etc/login.defs			# 密码的模板文件
-/etc/shells
-/etc/skel				# 家目录的模板文件夹
+Autofs
+   Autofs与Mount/Umount的不同之处在于它是一种看守程序。如果它检测到用户正试图访问一个尚未挂接的文件系统，它就会自动检测该文件系统，如果存在，那么Autofs会自动将其挂接。
+   如果它检测到某个已挂接的文件系统在一段时间内没有被使用，Autofs会自动将其卸载。因此一旦运行Autofs后，用户就不再需要手动完成文件系统的挂接和卸载。
 
-/etc/vimrc
-/home/aaron/.vimrc
+
+修改网卡名称:
+
+    Centos7是根据内核识别硬件状态,自动添加网卡名称,有多台机器可能导致网卡名不一样,不能统一管理!
+    网卡一般命名为 eth0, 多个网卡依次命名为 eth1、eth2 等, centos4/5/6都是这个名称!
+
+    # 在 GRUB_CMDLINE_LINUX 这行追加" net.ifnames=0" , 以下二种写法都可
+    sed -ri.bak '/^GRUB_CMDLINE_LINUX=/s@"$@ net.ifnames=0"@' /etc/default/grub             # 匹配最后一个"号, 然后替换 
+	sed -ri.bak '/^GRUB_CMDLINE_LINUX=/s#(.*)"$#\1 net.ifnames=0"#' /etc/default/grub       # 贪婪模式，匹配到最后一个"号
+
+    # 使启动参数生效
+    grub2-mkconfig -o /boot/grub2/grub.cfg                  # centos
+    grub2-mkconfig -o /etc/grub2.cfg                        # centos, "/etc/grub2.cfg"是"/boot/grub2/grub.cfg"的软衔接
+    grub-mkconfig -o /boot/grub/grub.cfg >& /dev/null       # ubuntu, grub2-mkconfig 的符号链接或兼容别名,向后兼容旧脚本和用户习惯
+
+    cp /etc/sysconfig/network-scripts/ifcfg-ens33  /etc/sysconfig/network-scripts/ifcfg-eth0
+    
+    reboot
+
+
+系统变量：
+    echo $PATH	
+    echo $SHELL
+    echo $PS1
+    echo $LANG
+    echo $OLDPWD
+    echo $RANDOM            # 生成一个0到32767之间的一个随机数
+
+
+配置文件和目录:
+    /etc/sudoers
+    /etc/hostname
+    /etc/shells
+    /etc/os-release			# Debian系（如Ubuntu）还是Red Hat系（如CentOS、Fedora）的Linux发行版，通常都会包含这个文件
+    /etc/redhat-release		# CentOS and reahat
+    /etc/issue 				# 登录前提示文件
+    /etc/motd   			# 登录后提示文件
+    /etc/profile.d/env.sh	# 定义history的格式
+    /boot/vmlinuz-3.10.0-1160.el7.x86_64
+    /dev/sda
+    /etc/DIR_COLORS
+    /dev/zero				# 字符设备
+    /etc/passwd				# 用户及其属性信息(名称、UID、主组ID等）
+    /etc/shadow				# 用户密码及其相关属性(有效期)
+    /etc/group
+    /etc/gshadow
+    /etc/default/useradd	# 创建用户模板文件
+    /etc/login.defs			# 密码的模板文件
+    /etc/shells
+    /etc/skel				# 家目录的模板文件夹
+    /etc/fstab
+    /etc/sysconfig/network-scripts/ifcfg-xxx
+    /etc/vimrc
+    /home/用户/.vimrc
+    /etc/default/grub       # 开机启动参数
+    /var/lib/rpm            # CentOS
+    /var/lib/dpkg           # Ubuntu    
+    /etc/pki/rpm-gpg/       # 公钥文件目录,检查RPM包的签名
+    /etc/yum.conf               # yum配置文件
+    /etc/yum.repos.d/ *.repo    # 仓库配置目录    
+	/etc/dnf/dnf.conf  
+	/var/log/dnf.rpm.log
+	/var/log/dnf.log
+
+
+
+VNC:
+    VNC 是在基于 UNIX 和 Linux 操作系统的免费的开源软件,远程控制能力强大,高效实用,其性能可以和 Windows 和 MAC 中的任何远程控制软件媲美。
+    VNC 连接无界面系统时，可能只能看到命令行窗口，因为没有默认的桌面环境。如果需要运行图形界面程序，还需要安装相应的桌面环境，如 GNOME、KDE、XFCE 等，并进行相关配置。
+    也可以在linux上安装 Xvfb（一个轻量级的虚拟显示服务程序）和 x11vnc，让 x11vnc 连接 Xvfb 并转换成 VNC 协议，这样可以在不启动实际图形界面的情况下提供 VNC 服

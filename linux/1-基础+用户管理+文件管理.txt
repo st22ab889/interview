@@ -86,6 +86,7 @@ man 		 	# 配合 whatis 命令使用
 =======================================================================文件管理==================================================================
 
 pwd
+ls				# 生产环境中, 如果目录下文件太多，慎用ls，会导致死机
 ls -lSrah
 ls -lrtah
 ls -d
@@ -130,12 +131,14 @@ mkdir
 	-v
 	-p
 	-m
-	
+
+du -sh /etc	 /opt					# 查看文件夹大小
+
 ln -s ./data/test.txt ./123.txt		# 不加 -s 就是创建硬链接
 
 ======================================================================IO、重定向=================================================================
 
-ll /dev/std*     					# in-> 0, out -> 1,  err -> 2
+ll /dev/std*     					# in 对应 0, out 对应 1,  err 对应 2
 ll /proc/self/fd/*
 ls -al > /dev/pts/1                 # 重定向到 "/dev/pts/1"输出(同理实现标准输入，错误输出), 这个设备要先存在, 使用tty
 ls -al 1> /dev/pts/1				# "ls -al > /dev/pts/1"的标准写法
@@ -173,6 +176,10 @@ wget -O tcp-plus.sh "https://github.com/ylx2016/Linux-NetSpeed/raw/master/tcpx.s
 wget -O - "https://github.com/ylx2016/Linux-NetSpeed/raw/master/tcpx.sh"				# "-" 表示只显示内容,不保存到文件. 和 ">"相反
 
 
+(wh0;hostname) > all.log
+{ who;hostname;} > all.log 			# 注意空格和分号 
+
+
 ====================================================================用户、组、权限===============================================================
 
 sudo -i
@@ -180,12 +187,12 @@ id
 id ec2-user
 id -u ec2-user
 
-which passwd     # 查找 passwd 文件的路径，前提是该文件在 $PATH 路径下
+which passwd     	# 查找 passwd 文件的路径，前提是该文件在 $PATH 路径下
 
-vipw		# 相当于 vim /etc/passwd
-vigr		# 相当于 vim /etc/group
-pwck		# 改了后校验 /etc/passwd 文件的格式
-grpck 		# 改了后校验 /etc/group 文件的格式
+vipw				# 相当于 vim /etc/passwd
+vigr				# 相当于 vim /etc/group
+pwck				# 改了后校验 /etc/passwd 文件的格式
+grpck 				# 改了后校验 /etc/group 文件的格式
 
 getent  passwd			#  相当于 cat /etc/passwd
 getent  passwd 用户
@@ -270,7 +277,6 @@ lsattr 文件名		# 显示特定属性. 特殊属性可以控制和防止root误
 chattr +i file		# 不能删除、改名、更改 ， chattr +i
 chattr +a file		# 只能追加，不能删除、改名， chattr -a
 
-
 ==============================================================访问控制列表(ACL)(了解)============================================================
 
 [root@localhost ~]#cll /usr/bin/chmod
@@ -313,22 +319,35 @@ tar等常见的备份工具是不会保留目录和文件的ACL信息, 但可以
 
 =================================================================================================================================================
 
-lsof 	# 一个列出当前系统打开文件
-ssh -p 22 -i id-rsa opc@zkh.dpdns.org
-sudo -i
-ps aux
-ifconfig
 
-dd if=/dev/zero of=bin.img bs=1 count=3
-	dd：这是一个用于转换和复制文件的命令行工具。它可以从输入文件中读取数据，进行某种处理，然后写入输出文件。
-	if=/dev/zero	输入文件 (input file)：使用 /dev/zero 设备（生成无限的空字节流 0x00）
-	of=bin.img	输出文件 (output file)：创建名为 bin.img 的新文件
-	bs=1	块大小 (block size)：每次读写操作处理 1字节 数据
-	count=3	操作次数：总共复制 3个块
-	常见应用场景：
-		创建特定大小的空文件（例如：bs=1M count=100 创建 100MB 文件）
-		文件填充测试（用零填充文件系统空间）
-		低级设备操作（如创建 USB 启动盘：dd if=os.iso of=/dev/sdb bs=4M）
-		安全擦除（多次覆盖：dd if=/dev/urandom of=file bs=1M count=10）
+cd !$     		表示前一个命令中的最后一个参数，相当于"Esc, ."和"Alt+ ."
+cat !*			把前一个命令的参数给到现在这个命令用
+
+ctrl+r			在命令历史中搜索命令
+Ctrl+g			从历史搜索模式退出	
+
+Ctrl + l		清屏，相当于clear命令
+Ctrl + u 		从光标处删除至命令 行首
+Ctrl + k 		从光标处删除至命令 行尾
+Alt + r 		删除当前整行(可能依赖于终端快捷键设置)
+Ctrl + s 		阻止屏幕输出，锁定。 虽然锁定显示了，但还是能运行命令，只是不显示
+Ctrl + q 		允许屏幕输出，解锁
+
+补充:
+Ctrl + A   		移动光标到首位字符。例如，在已输入命令前追加sudo，赋予 命令执行 权限。
+Ctrl + E   		移动光标到末位字符。例如，在已输入命令后追加&，将命令送入后台执行。	
+Ctrl + W 		删除光标所在单词。
+Ctrl + Z		将正在执行的命令送入后台，以继续使用终端。执行bg命令可以查看后台正在执行的命令列表，执行fg命令可以调回后台正在执行的命令。
 
 
+
+Ctrl + A				移动光标到行首。 (掌握)
+Ctrl + E				移动光标到行尾。(掌握)
+Alt + B 或 Esc + B		向左移动一个单词。
+Alt + F 或 Esc + F		向右移动一个单词。
+Ctrl + B				向左移动一个字符。
+Ctrl + F				向右移动一个字符。
+Ctrl + U				删除从光标到行首的所有字符。
+Ctrl + K				删除从光标到行尾的所有字符。
+Ctrl + W				删除光标左侧的一个单词。
+Ctrl + Y				粘贴最近删除的文本。

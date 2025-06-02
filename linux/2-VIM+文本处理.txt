@@ -245,13 +245,13 @@ ctrl-v 			面向块，-- VISUAL BLOCK --  (非常有用,比如批量注释)
 =================================多文件模式=================================
 
 vim FILE1 FILE2 FILE3 ...
-:next 下一个
-:prev 前一个
-:first 第一个
-:last 最后一个
-:wall 保存所有
-:qall 不保存退出所有
-:wqall保存退出所有
+:next 		下一个
+:prev 		前一个
+:first	 	第一个
+:last 		最后一个
+:wall 		保存所有
+:qall 		不保存退出所有
+:wqall		保存退出所有
 
 ==================================多窗口模式==================================
 
@@ -304,8 +304,133 @@ vim -b binaryfile
 :%!xxd  -r
 #保存退出
 
+====================================帮助====================================
+
+help
+:help topic
+Use :q to exit help
+vimtutor				vim 帮助练习工具
 
 
-===============================标记和宏(macro)===============================
+
+=====================================================================文本工具====================================================================
+
+ss -nt |cat -A 		# -A 可以看不可见字符
+	-E				# 显示行结束符$
+	-n				# 对显示出的每一行进行编号
+	-b				# 非空行编号
+	-s				# 压缩连续的空行成一行
+	
+nl abc.txt			# 相当于 cat -b
+
+tac a.txt			# 倒叙显示文件，最后一行在第一行显示，以此类推
+rec a.txt			# 每一行中，最后一个字符显示在第一个，以此类推
+
+hexdump -C bin.img				# 看二进制，以十六进制显示
+hexdump -s 735 -Cn 30 /bin/ls  
+od								# 看二进制(了解)
+xxd								# 看二进制(了解)
+
+ls -R /etc | more -d		# 空格翻页,回车翻行，翻到底部退出，-d显示提示信息
+ls -R /etc | less			# pageup、pagedown上下翻页，空格翻页,回车翻行   翻到底部不退出，按q退出. 支持"/文本"搜索，配合 n/N
+	
+head  -n3 text.txt			# 默认显示前10行，-n 指定行(可以不些 -n, 等价于 head 3 text.txt ) . "-n -3" 不显示最后三行，其余都显示
+	-c3						# 取前三个字节. 例如： cat/dev/urandom | tr -dc '[:alnum:]' | head -c12
+
+	
+tail -n3  text.txt			# 等价于 tail -3
+tail -n+3 text.txt			# 除了前3行都显示
+tail -f /var/log/message	# message日志记录操作系统发生的事,比如插一个优盘就会被记录
+	
+	
+cut -d: -f1,3 /etc/passwd							# 取 passwd 文件的第一和第三列
+ll  | tail -n +2 | tr -s " " | cut -d" " -f3,9		# 取3，9列
+df | tr -s " "| cut -d" " -f5 | tail -n+2 | tr -d%
+df | tail -n+2| tr -s ' ' % | cut -d% -f5
+df | tail -n+2 | cut -c44-46						# 取44到46的字符
+
+
+seq 10 > a.txt
+echo {a..z} > b.txt | tr -s " " "\n"
+paste -d+ a.txt b.txt					# 将a文件的内容复制到b文件，同行合并，-d指定合并符
+paste -s a.txt b.txt					# 列变行，这里有两个文件，最终合在一起变成了两行
+seq 10 | paste -d" " -s
+seq 10 | paste -d+ |bc
+
+
+wc	text.txt							# 等价于 wc -lwc text.txt	
+	-l 只计数行数
+	-w 只计数单词总数
+	-c 只计数字节总数
+	-m 只计数字符总数
+	-L 显示文件中最长行的长度
+wc -l text.txt		
+cat text.txt | wc -l	
+
+
+sort									# 默认按字符秩序顺序排序
+	-r 执行反方向（由上至下）整理
+	-R 随机排序
+	-n 执行按数字大小整理
+	-h 人类可读排序,如: 2K 1G 
+	-f 选项忽略（fold）字符串中的字符大小写
+	-u 选项（独特，unique），合并重复项，即去重
+	-t c 选项使用c做为字段界定符
+	-k # 选项按照使用c字符分隔的 # 列来整理能够使用多次
+sort -t: -k3 -n                            # 以文件第三列按数字大小排，加上 -r 表示倒序
+df | tail -n+2|tr -s ' ' % | cut -d% -f5 | sort -nr | head -n1
+
+
+uniq					# 去重相邻行的去重
+	-c: 显示每行重复出现的次数
+	-d: 仅显示重复过的行
+	-u: 仅显示不曾重复的行
+	
+cud -d" " -f1 nginx.access.log | sort | uniq -c | sort -nr | head    	 # 过滤出访问次数最多的前十的IP
+
+
+cat f1.txt f2.txt | sort | uni1 -d   				# 找到两个文件重复的行
+cat f1.txt f2.txt | sort | uni1 -u  				# 找到两个文件不重复的行
+
+diff
+
+diff -u f1.txt f2.txt > diff.log
+rm f2.txt
+patch -b f1.txt diff.log        # 通过f1找回f2,  找回的f2会命名为f1，所以 -b 会使 f1 备份
+
+diff -u 
+vim -d f1.txt f2.txt			# just like vimdiff
+cmp /bin/ls  /bin/dir			# 比较二进制文件 	
+	
+
+
+
 
 =================================================================================================================================================
+
+lsof 	# 一个列出当前系统打开文件
+ssh -p 22 -i id-rsa opc@zkh.dpdns.org
+sudo -i
+ps aux
+ifconfig
+
+dd if=/dev/zero of=bin.img bs=1 count=3
+	dd：这是一个用于转换和复制文件的命令行工具。它可以从输入文件中读取数据，进行某种处理，然后写入输出文件。
+	if=/dev/zero	输入文件 (input file)：使用 /dev/zero 设备（生成无限的空字节流 0x00）
+	of=bin.img	输出文件 (output file)：创建名为 bin.img 的新文件
+	bs=1	块大小 (block size)：每次读写操作处理 1字节 数据
+	count=3	操作次数：总共复制 3个块
+	常见应用场景：
+		创建特定大小的空文件（例如：bs=1M count=100 创建 100MB 文件）
+		文件填充测试（用零填充文件系统空间）
+		低级设备操作（如创建 USB 启动盘：dd if=os.iso of=/dev/sdb bs=4M）
+		安全擦除（多次覆盖：dd if=/dev/urandom of=file bs=1M count=10）
+
+yum provides /usr/share/dict/linux.words
+yum -y install words      # 密码太简单就是查的这个字典
+xshell  sz 命令
+ 
+ping  -c1 -W1  127.0.0.1 > /dev/null
+	c1 ping 1次
+	W1 超时1s,局域网1秒没有ping通说明网络不通
+ping  -c1 -W1  127.0.0.1 &> /dev/nul

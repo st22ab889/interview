@@ -1,0 +1,582 @@
+================================================================================================================================================
+centos:
+    rpm:rpm包管理机制的缺陷是依赖性问题,而且无解. 一般不用rpm直接安装包，而是使用yum
+    yum 
+    dnf:centos8 ,同时保留yum的兼容性，配置也是通用
+    编译安装
+
+ubuntu：
+    dpkg, 包的后缀为".deb", 类似 rpm
+    apt, 类似 yum
+    编译安装
+
+程序包管理器相关文件
+    1. 包文件组成 (每个包独有)
+        包内的文件
+        元数据，如：包的名称，版本，依赖性，描述等
+        可能会有包安装或卸载时运行的脚本，安装或卸载会触发脚本的运行，不是每个包都有
+    2. 数据库(公共)目录：CentOS的是"/var/lib/rpm", Ubunt的是"/var/lib/dpkg" 
+        程序包名称及版本
+        依赖关系
+        功能说明
+        包安装后生成的各文件路径及校验码信息
+    
+    安装包后有一些公共的数据,会把这些数据放在一个数据库(公共)目录中:
+        这个文件夹很重要,会把安装过的包以及这个包包含的文件列表都会放在这个文件夹.
+        利用这个数据库就可以知道系统装了哪些包，这些包涵盖哪些文件以及文件属性.
+        安装包的时候会利用这个数据库查询是否已安装该包, 卸载的时候也就是根据这个数据库的记录去卸载
+
+	数据库维护
+		rpm initdb			 	# 初始化，如果事先不存在数据库，则新建之，否则，不执行任何操作
+		rpm rebuilddb		 	# 重建已安装的包头的数据库索引目录
+
+获取程序包的途径:
+	系统发版的光盘或官方网站
+		CentOS 镜像：
+			https://www.centos.org/download/
+			http://mirrors.aliyun.com
+			https://mirrors.huaweicloud.com/
+			https://mirror.tuna.tsinghua.edu.cn/
+			http://mirrors.sohu.com
+			http://mirrors.163.com
+		
+		Ubuntu 镜像：
+			http://cdimage.ubuntu.com/releases/
+			http://releases.ubuntu.com
+	
+	第三方组织提供
+		Fedora-EPEL：Extra Packages for Enterprise Linux
+			https://fedoraproject.org/wiki/EPEL
+			https://mirrors.aliyun.com/epel/
+			https://mirrors.cloud.tencent.com/epel/
+		Rpmforge：官网：http://repoforge.org/, RHEL推荐，包很全，即将关闭
+		Community Enterprise Linux Repository：http://www.elrepo.org，支持最新的内核和硬件相关包
+	
+	软件项目官方站点
+		http://yum.mariadb.org/10.4/centos8-amd64/rpms/
+		http://repo.mysql.com/yum/mysql-8.0-community/el/8/x86_64/
+	
+	搜索引擎: 注意：第三方包建议要检查其合法性，来源合法性,程序包的完整性
+		http://pkgs.org
+		http://rpmfind.net
+		http://rpm.pbone.net
+		https://sourceforge.net/
+	
+	自己制作
+		将源码文件，利用工具，如：rpmbuild，fpm 等工具制作成rpm包文件
+
+ldd /usr/bin/ls         # 查看二进制程序所依赖的库文件
+
+=======================================================================rpm======================================================================
+
+rmp 软件包包含的文件有:二进制文件、库文件、配置文件、帮助文件
+
+为了让用户选择特定的包, 会把一些大的软件拆开为好几个小rpm(centos6以前不会拆,所有的东西都放在一个包)
+
+rmp 包命令格式:
+    abrt-addon-ccpp-2.1.11-60.el7.centos.x86_64.rpm
+        abrt-addon-ccpp 	    软件名称
+	    2.1.11 				    软件版本号 
+        60 		                打包次数
+        el7 	                EL是RedHatEnterpriseLinux的简写, EL7表示软件包可以在 Red Hat 7.x，CentOS 7.x，CloudLinux 7.x 进行安装
+        x86_64                  CPU架构.
+
+     CPU 常见的架构有: 
+        x86:        i386, i486, i586, i686
+		x86_64:     x64, x86_64, amd64
+		powerpc:    ppc
+        noarch:     表示和平台无关
+
+rpm:功能：安装、卸载、升级、查询、校验、数据库维护
+    常见选项:
+		-v              # 可视化
+		-vv
+		-h			    # 以#显示程序包管理执行进度
+		-i			    # 安装
+		-q			    # 查询
+		-e			    # 卸载, e是erase的缩写
+		-l			    # 查看指定的程序包安装后生成的所有文件
+        -p              # 针对尚未安装的程序包文件做查询操作
+	
+	常用组合：-ivh
+
+	安装包时配合的其它选项：
+		--test: 			# 测试安装，但不真正执行安装，即dry run模式
+		--nodeps			# 忽略依赖关系
+		--replacepkgs  		# 安装一个新的 RPM 包，并且希望替换掉已存在的同名包时
+		--replacefiles		# 安装或更新RPM软件包时，通常rpm不会替换目标系统中已存在的某些文件，特别是可执行文件。此选项可强制替换，而无需使用--force选项。这意味着即使文件被其他软件包或系统文件占用,也可以进行替换‌
+		--nosignature 		# 不检查来源合法性
+		--nodigest			# 不检查包完整性
+		--noscripts			# 不执行程序包脚本
+			%pre			# 安装前脚本 --nopre
+			%post			# 安装后脚本 --nopost
+			%preun			# 卸载前脚本 --nopreun
+			%postun			# 卸载后脚本 --nopostun
+
+
+rpm2cpio tree-1.6.0-10.el7.x86_64.rpm | cpio -tv                            # 查看 RPM 软件包中包含的文件
+
+rpm2cpio 包文件|cpio –id "*.conf"                                            # 释放包内文件(了解)
+
+rpm -q autofs || yum -y install autofs; systemctl enable --now autofs       # 查看autofs这个软件有没有安装,没有就安装并设置为开机启动
+
+rpm -qp --scripts httpd-2.4.6-95.el7.centos.x86_64.rpm          # 查询包包里有无带脚本,如带脚本就打印出脚本内容. ubuntu的dpkg没有此功能,需要间接实现                                    
+
+rpm -qa                                      # 查询已安装的所有包 
+
+rpm -q vsftpd                                # 查询一个软件包是否已安装
+
+rpm -ivh vsftpd-3.0.2-28.el7.x86_64.rpm      # vh 显示安装过程和进度
+
+rpm -ql vsftpd                               # 查看RPM包安装后,其中若干文件的放置路径
+
+rpm -e vsftpd                                # 卸载软件,只写软件名,不用写包全称
+
+rpm -e vsftpd --nodeps                       # 卸载软件, 即使其它包依赖vsftpd也照样删除
+
+rpm -qi tree                                 # 查包的信息
+
+rpm -qf /etc/issue                           # -qf 查看磁盘上的文件来自于哪个包
+
+rpm -qc centos-release                       # -qc 只看包里面的配置文件
+
+rpm -ivh /misc/cd/Packages/tree-1.6.0-10.el7.x86_64.rpm --force		# 安装软件时显示已安装,但没有实际安装,可强制重新安装
+
+
+特殊案例: 删除rpm包后如何安装文件(删除RPM包后YUM命令也不能用)?使用救援模式下的rpm命令重新给原系统安装rpm
+	rpm -e rpm --nodeps 	
+	#假如原系统挂载到"/mnt/sysimage"目录, 而光盘文件挂载到"/run/install/repo"目录.光盘文件中提供了很多RPM包,其中就包含RPM本身这个包.
+	rpm -ivh /run/install/repo/packages/rpm-4.11.3-45.el7.x86_64.rpm --root=/mnt/sysimage
+
+
+校验包合法性:
+	安装centos时,默认把centos这个组织发布的所有包的key发在这里生成了一个公钥文件,导入这个公钥才能检查RPM包的签名.
+	在安装系统时已经默认导入到 /etc/pki/rpm-gpg/ 
+	导入后更改或破坏"/etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7"此文件,就会校验失败
+
+	rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7			# 手动导入
+	rpm -qa 'gpg-pubkey'										# 查看已经导入的KEY
+	rpm -K /misc/cd/Packages/tree-1.6.0-10.el7.x86_64.rpm		# -K 检查签名是否正确
+	rpm -V tree													# 检查包安装后的文件有无被修改过,比如修改了权限等属性,修改了就会列出修改的地方
+
+=======================================================================yum=====================================================================
+
+"/etc/yum.conf"为所有仓库提供公共配置.
+	# CentOS7
+		cat /etc/yum.conf
+		[main]
+		cachedir=/var/cache/yum/$basearch/$releasever		# 缓存目录, 保存包的相关的元数据文件
+		keepcache=0											# 如果为1,则下载rpm并缓存下来,不删除,默认安装rpm后会删除rpm包
+		debuglevel=2										# 调试级别(0-10)，默认为2
+		logfile=/var/log/yum.log							# yum的日志文件所在的位置
+		exactarch=1											# 在更新的时候，是否允许更新不同版本的RPM包，比如是否在i386上更新i686的RPM包。
+		obsoletes=1											# 允许更新陈旧的RPM包,1 表示允许
+		gpgcheck=1											# 安装包前要做包的合法和完整性校验, 0 表示不检查	
+		plugins=1											# 是否允许使用插件，默认是0不允许，但一般会用yum-fastestmirror这个插件。
+		installonly_limit=5									# 同时可以安装5个包，最小值为2，如设为0或1，为不限制	
+		bugtracker_url=http://...							# bug 提交的url
+		distroverpkg=centos-release							# 指定从centos-release这个包里的文件获取系统版本相关信息
+
+	# CentOS8
+		cat /etc/yum.conf		
+		[main]	
+		clean_requirements_on_remove=True 					# 删除包时，是否将不再使用的包删除, CentOS7无此选项
+		best=True 											# 升级时，自动选择安装最新版，即使缺少包的依赖, CentOS7无此选项	
+
+
+"/etc/yum.repos.d/"目录保存仓库的配置文件,多个仓库配置可以写在一个 repo 文件中, 也可以分开写在 repo 文件中, 但后缀需要以".repo"结尾.
+	
+	仓库配置文件repo格式:
+		[repositoryID]								  # (必须)ID唯一,不要有空格
+		name=Some name for this repository			  # 描述信息
+		baseurl=url://path/to/repository/             # (必须)仓库url, 支持: file://本地路径; http://; https://; ftp://  
+		mirrorlist=									  # (必须)和 baseurl 二选一, 可以指定url列表，通过换行实现,每一行都是一个url
+		enabled={1|0}								  # 是否启用此仓库	
+		gpgcheck={1|0}								  # 是否校验RPM包签名 	
+		gpgkey=URL									  # 校验RPM包的签名的公钥路径
+		enablegroups={1|0}							  # 决定了 YUM 是否允许用户通过组名批量安装、升级或删除一组相关的软件包。	
+		failovermethod={roundrobin|priority}		  # roundrobin表示随机挑选，默认值; priority表示按顺序访问	
+		cost=1000							  		  # 默认为1000,软件源的优先级, 值越高级别越高
+		
+	baseurl形式示例：
+		baseurl=http://mirrors.aliyun.com/epel/$releasever/Everything/$basearch			# yum仓库指向的路径一定必须是repodata目录所在目录
+
+	repo配置文件中可用的变量：
+		$releasever				# 当前OS的发行版的主版本号，如：8，7，6
+		$arch					# CPU架构，如：aarch64, i586, i686，x86_64等
+		$basearch				# 系统基础平台；i386, x86_64
+		$contentdir				# 表示目录，比如：centos-8，centos-7
+		$YUM0-$YUM9				# 自定义变量
+
+		# 变量来自"/etc/yum.conf"中distroverpkg指定的包当中的文件，比如指定的 centos-release, 表示 centos-release 这个RPM包
+		# "distroverpkg=centos-release"的意思其实是将 $releasever 设置为 centos-release 这个RPM包的版本号
+		rpm -qi centos-release									# 查看包的信息
+		
+repo源:
+	官方源:
+		Base 源：包含了 CentOS 系统的基本软件包，是系统安装时默认使用的源。它提供了系统运行所需的核心组件，如内核、系统工具、基础库等，以确保系统的稳定运行。
+		AppStream源，
+		Updates 源：用于提供 CentOS 系统的更新软件包，包括安全更新、漏洞修复、功能改进等。通过定期从这个源更新软件包，可以保证系统的安全性和性能。
+		Extras 源：包含一些额外的软件包，这些软件包不是系统必需的，但可以提供一些额外的功能，如额外的字体、一些特定的系统工具等。
+		CentOS-Vault 源：存储了 CentOS 过期版本的软件包。当 CentOS 的某个版本停止维护后，相关的软件包会被移动到这个源中。
+	第三方源
+		EPEL源：Fedora社区打造，为RHEL及衍生发行版如CentOS提供高质量且大量官方源中没有的软件包。涵盖了各种工具、库和应用程序。并且大多数软件包的版本比官方源中的要新。	
+		IUS源：是一个社区项目，专门为 RHEL 和 CentOS 提供较新版本的 RPM 包。提供了一些软件的最新版本
+		Atomic源：提供了最新版本的 nginx、PHP 等版本信息，适合需要使用这些软件最新版本的用户
+		elrepo 源：主要提供硬件驱动、内核更新方面的支持，如显卡、无线网卡的驱动以及较新的内核版本等
+		RepoForge 源：原名 RPMForge，是一个维护得很不错的 repo 站点，提供了大量的软件包，包括一些在官方源中没有的应用程序和工具
+	国内镜像源:
+		阿里云镜像源
+		腾讯云镜像源
+		清华大学 TUNA 源
+		中科大镜像源
+		华为u镜像源
+	常用的源：
+		Base
+		Updates
+		EPEL：有很多很好玩很丰富的包	
+		Extras：偶尔用, 比如可以通过 extras 来生成 epel源, 生成的epel源在国外, 建议自己写 epel 源
+			yum list epel*							# 列出eapl包
+			yum install epel-release.noarch -y		# 装完后自动生成一个epel源配置,但源指向国外的镜像站点,下载安装里面的RPM包可能会慢,可以编辑配置指向国内镜像
+			yum remove epel-release.noarch			# 卸载 epel-release.noarch 这个 rpm 包
+
+yum-config-manager:
+	yum-config-manager --add-repo URL或file 			 # 增加仓库(重要)
+	yum-config-manager --disable "仓库名"				 # 禁用仓库	
+	yum-config-manager --enable  "仓库名				 # 启用仓库
+
+yum:
+	选项:
+		-y 							# 自动回答为"yes"
+		-q 							# 静默模式
+		--nogpgcheck 				# 禁止进行gpg check
+		--enablerepo=repoidglob    	# 临时启用此处指定的repo，支持通配符，如："*"
+		--disablerepo=repoidglob 	# 临时禁用此处指定的repo,和上面语句同时使用，放在后面的生效
+
+	命令:
+		yum repolist [all|enabled|disabled]			  					# 显示仓库列表
+
+		yum list														# 显示程序包
+		yum list [all | glob_exp1] [glob_exp2] [...]					# 显示程序包，支持通配符
+		yum list {available|installed|updates} [glob_exp1] [...]
+
+		yum install package1 [package2] [...]					# 安装程序包
+			--downloadonly  									# 只下载相关包默认至/var/cache/yum/x86_64/7/目录下,而不执行install/upgrade/erase
+			--downloaddir=<path>, --destdir=<path>  			# --downloaddir选项来指定下载的目录,如果不存在自动创建
+			注: "--downloadonly"的下载包功能也可通过"/etc/yum.conf" 中的 cachedir 和 keepcache 实现
+		yum reinstall package1 [package2] [...] 			 	# 重新安装
+
+
+		yum remove | erase package1 [package2] [...]			# 卸载程序包
+
+		yum check-update										# 检查可用升级
+		yum upgrade|update [package1] [package2] [...]
+		yum upgrade-minimal   									# 最小化升级
+		yum downgrade package1 [package2] [...] 				# 降级	
+
+		yum info [...]  											# 查看程序包information
+		yum provides | whatprovides feature1 [feature2] [...		# 查看指定的特性(可以是某文件)是由哪个程序包所提供, 
+			yum provides /etc/vsftpd/vsftpd.conf					# 要写文件全路径才能查询到
+			yum provides */vsftpd.conf								# 支持通配符
+		yum search string1 [string2] [...]							# 以指定的关键字搜索程序包名及summary信息
+		yum deplist package1 [package2] [...]						# 查看指定软件包的依赖关系				
+
+		yum clean [ packages | metadata | expire-cache | rpmdb | plugins | all ]	# 清除目录/var/cache/yum/缓存
+		yum makecache						# 构建缓存
+
+		yum localinstall | install rpmfile1 [rpmfile2] [...]			# 安装本地程序包
+		yum localupdate | update rpmfile1 [rpmfile2] [...]				# 升级本地程序包
+
+		yum updateinfo --summary|--list|--info							# 查看包的安全警报
+
+		包组管理的相关命令(了解):
+			yum grouplist [hidden] [groupwildcard] [...]
+			yum groupinstall group1 [group2] [...]
+			yum groupupdate group1 [group2] [...]
+			yum groupremove group1 [group2] [...]
+			yum groupinfo group1 [...]
+
+yum卸载包存在的问题：
+	centos7在卸载的时候只卸载本身,不卸载依赖包。
+	entos8在卸载的时候会连同依赖包一起卸载
+
+	(重要)在centos7中, 如何连同依赖包一同卸载？
+		yum history						# 从安装历史中找到ID
+		yum history info $ID			# 查看安装的软件已经相关的依赖包		
+		yum history undo $ID			# 撤销, 相当于卸载了安装的包和依赖包 
+		
+		yum history redo $ID			# 把 $ID 这一项记录重新操作一遍,是安装就按照,是擦除就是擦除
+		yum history undo $ID            # 如果 $ID 记录的是擦除, undo 就是撤销擦除,相当于重新安装 
+
+
+yum事务历史:
+	/var/log/yum.log			# CentOS 7以前版本日志
+	/var/log/dnf.rpm.log		# CentOS 8 版本日志
+	/var/log/dnf.log			# CentOS 8 版本日志
+
+注意事项:
+	同一时间只能运行一个yum命令, 如另一个窗口yum正在安装软件包, 再用yum命令做其它事情会出现"Waiting for process with pid  xxxx to finish"
+
+命令示例:
+	yum repolist						# 列出源的信息
+	yum repolist  -v					# centos8 要加上 -v 参数才会列出包的数量
+	yum list							# 列出所有可用和已安装的软件包. 带@符号说明包已经安装, @anaconda表示装系统时就默认安装的包,其余的是未安装的包
+	yum list available					# 列出没有装的包
+	yum list installed					# 列出已安装的包
+	yum list *httpd*					# 查看配置的源中有没有某个包,支持通配符, 
+	yum info *httpd*					# 查看源中包的信息,	支持通配符.建议写包的全名,否则会打印出所有包的信息
+
+范例: 安装epel源
+	yum -y install epel-release;yum -y install sl; sl -a		# 安装epel源;并安装s1;查看s1打印出来的图案. sl是字母sl. -a 表示火车上有司机.
+	rpm -ql sl													
+
+	yum -y install cowsay
+	cowsay								# 牛说
+	rpm -ql cowsay						# 可以查找其它动物
+	cowthink
+
+范例：升级包
+	yum --disablerepo=* --enablerep=updates list available
+	yum info samba
+	yum info samba --showduplicates								# 显示软件包的所有可用版本‌	
+	yum install samba --disablerepo=updates
+	yum update samba
+	yum update
+
+范例: 利用elrepo源在CentOS 7 安装新版内核
+	yum install https://www.elrepo.org/elrepo-release-7.0-4.el7.elrepo.noarch.rpm
+	rpm -ql elrepo-release-7.0-4.el7.elrepo
+	yum repolist
+	cat /etc/yum.repos.d/elrepo.repo
+	yum --disablerepo="*" --enablerepo="elrepo-kernel" list available
+	yum -y --enablerepo="elrepo-kernel" install kernel-ml
+	ls /boot
+
+	卸载内核: 不能卸载当前正在使用的内核, 切回到要使用的内核操作
+		yum remove $RPM				# 或使用下面方式
+		yum history undo $ID	
+		
+范例(了解):
+	yum grouplist						# 查看可用的包组
+	yum groupinfo "Server with GUI"		# 最小化安装的系统安装图形环境
+
+
+=======================================================================dnf======================================================================
+
+DNF(DaNdiFied)，新一代RPM软件包管理器. 采用Python 编写,克服了YUM包管理器的一些瓶颈，提升了包括用户体验，内存占用，依赖分析，运行速度等
+	man dnf
+
+配置文件+仓库文件+日志文件:
+	/etc/dnf/dnf.conf  
+	/etc/yum.repos.d/ *.repo
+	/var/log/dnf.rpm.log
+	/var/log/dnf.log
+
+dnf 用法与yum一致：
+	dnf [options] <command> [<arguments>...]
+	dnf --version
+	dnf repolist
+	dnf reposync
+	dnf install httpd
+	dnf remove httpd
+	dnf clean all
+	dnf makecache
+	dnf list installed
+	dnf list available
+	dnf search nano
+	dnf history undo 1
+
+CentOS 7 使用 dnf ，需下载并安装一些相应的RPM包.
+
+yum 和 dnf 失败最主要原因：
+	yum的配置文件格式或路径错误.  --> 检查/etc/yum.repos.d/*.repo文件格式
+	yum cache					--> yum clean all
+	网络不通					 --> 网卡配置
+
+===================================================================yum私有仓库===================================================================
+
+企业里面至少要两个源
+	系统源: 光盘中的那个源, centos7光盘中有一个源; centos8光盘中有二个系统源,分别是BaseOS和AppStream两个源
+	epel源:
+
+
+为了安全可靠，通常至少搭建两个一摸一样的yum私有仓库服务器。
+
+	方式1: 直接利用光盘中的源
+		
+		准备工作：
+			1. 关闭防火墙
+				systemctl disable --now firewalld
+			2. 关闭SELinux
+				vim /etc/selinux/config
+				SELinux=disabled
+			3.添加CD/DVD驱动器,然后加载centos光盘,开机后使用"scandisk"命令扫描出新加的驱动器
+		
+		yum -y install httpd; systemctl enable --now 		# 安装http服务并启动, 验证http服务是否启动成功, 浏览器中访问本机IP 
+		cd /var/www/html/									# "/var/www/html/"是存放网页的文件夹
+		mkdir centos/{7,8} -pv								# 创建cnetos7和8的源路径
+		mount /dev/sr1 /var/www/html/centos/7				# 挂载cnetos7和8的光盘
+			centos7光盘的根目录下就是 repodata 目录, 所以 baseurl 为 http://IP/centos/7
+		mount /dev/sr0 /var/www/html/centos/8	
+			centos8光盘的根目录下的BaseOS和AppStream有 repodata 目录, 所以 baseurl 分别为 http://IP/centos/8/BaseOS/ 和 http://IP/centos/8/AppStream/
+		yum repolist			# 验证
+		yum repolist vsftpd		# vsftpd 是否来自刚刚创建的私有仓库
+		yum install vsftpd -y	# 安装测试
+		
+		
+	方式2: 只有RPM包, 使用命令创建元数据
+		yum -y install createrepo						# 使用命令 createrepo 创建元数据，首先安装这个包才才能使用这个命令
+		mkdir /data/myrepo 								# rpm 包放在 myrepo 目录下
+		createrepo /data/myrepo							# 运行后会在myrepo目录下生成repodata文件夹, 之后" /data/myrepo"就可以当作仓库使用	
+	
+
+	方式3: 把互联网上的epel源的仓库拿过来在公司内部搭建仓库
+		
+		首先仍然需要在"/etc/yum.repos.d/"目录下配置好repo源.
+		
+		使用 reposync 工具下载 rpm包, 需要指定repositoryID:
+			dnf reposync --help 													# CentOS 8 dnf 集成 reposync 工具, 直接使用
+			dnf reposync  --repoid={{repositoryID}} --download-metadata -p /path 	# 默认只下载rpm包，不下载 meta数据，需指定--download-metadata 才能下载 meta
+			
+			reposync --repoid={repositoryID} --download-metadata -p /path  			# CentOS 7 以前版本，reposync工具来自于yum-utils包
+
+		结合方式1或方式2实现本地yum源.
+
+====================================================================程序包编译===================================================================
+
+编译源码的项目工具：
+	C、C++的源码编译：使用 make 项目管理器， configure脚本 --> Makefile.in --> Makefile 
+		autoconf: 生成configure脚本
+		automake：生成Makefile.in
+	java的源码编译: maven
+
+
+C 语言源代码编译安装过程:
+	yum install gcc make autoconf gcc-c++ glibc glibc-devel [等工具和依赖包]
+	./configure			# 通过选项传递参数，指定安装路径、启用特性等；执行时会参考用户的指定以及Makefile.in文件生成Makefile; 检查依赖到的外部环境，如依赖的软件包
+	make 				# 根据Makefile文件，会检测依赖的环境，进行构建应用程序
+	make install 		# 复制文件到相应路径
+	make install DESTDIR=/root/nginx-1.20.1/nginx-1.20.1		# 将安装文件复制到指定目录
+
+
+(重要步骤)运行 configure 脚本，生成 Makefile 文件:
+	
+	/configure --help   	 # 获取其支持使用的选项， configure主要功能 = 指定安装位置 + 指定启用的特性
+
+	选项分类：
+		安装路径设定：
+			--prefix=/PATH						# 指定默认安装位置,默认为/usr/local/
+			--sysconfdir=/PATH					# 配置文件安装位置
+			System types						# 支持交叉编译
+		软件特性和相关指定：
+			Optional Features					# 可选特性
+ 				--disable-FEATURE
+ 				--enable-FEATURE[=ARG]
+			Optional Packages					# 可选包
+ 				--with-PACKAGE[=ARG] 依赖包
+ 				--without-PACKAGE 禁用依赖关系
+
+	注意：通常被编译操作依赖的程序包，需要安装此程序包的"开发"组件，其包名一般类似于name-devel-VERSION
+
+
+安装后的配置:
+	二进制程序目录导入至PATH环境变量中:
+		方式1：/etc/profile.d/ 目录是全局生效的系统级配置目录
+			export PATH=/PATH/TO/BIN:$PATH				# 编辑 /etc/profile.d/$程序name.sh, 添加此行到 $程序name.sh 			
+		方式2：
+			针对当前用户（推荐）
+				export PATH=/PATH/TO/BIN:$PATH	 		# 添加此行到 ~/.bashrc（Bash Shell）或 ~/.zshrc（Zsh Shell）
+				source ~/.bashrc 						# 或 source ~/.zshrc , 使配置立即生效
+			针对所有用户（需管理员权限）：
+				export PATH=/PATH/TO/BIN:$PATH			# 添加此行到 /etc/profile
+				source /etc/profile 
+		方式3：
+			export PATH=/PATH/TO/BIN:$PATH				# export 仅在当前 Shell 会话中临时生效
+
+	相关用户及文件: 有些开源软件编译完成后，还需要创建相关的用户及文件
+
+	导入帮助手册: 编辑/etc/man.config|man_db.conf文件,添加一个MANPATH
+
+=====================================================================Ubuntu=====================================================================
+
+dpkg：package manager for Debian
+	man dpkg
+
+apt：Advanced Packaging Tool
+	apt help
+
+dpkg 常见用法: 
+	dpkg -i package.deb 			# 安装 .deb 包
+	dpkg -r package 				# 删除包，不建议，不自动卸载依赖于它的包
+	dpkg -P package 				# 删除包（包括配置文件）
+	dpkg -l							# 列出当前已安装的包，类似rpm -qa
+	dpkg -l package 				# 显示该包的简要说明	
+	dpkg -s package 				# 列出该包的状态，包括详细信息，类似rpm –qi	
+	dpkg -L package 				# 列出该包中所包含的文件，类似rpm –ql 
+	dpkg -S <pattern> 				# 在当前安装的包里查找文件，文件需写完整路径,类似 rpm –qf 
+	dpkg --configure package 		# 配置包，-a 使用，配置所有没有配置的软件包
+	dpkg -c package.deb 			# 列出 deb 包的内容，类似rpm –qpl 
+	dpkg --unpack package.deb		# 解开 deb 包的内容
+	dpkg -r zip						# 卸载软件包, 不要使用dpkg卸载软件包。因为删除包时，其它依赖它的包不会卸载，并且可能无法再正常运行
+
+apt: 
+	在 2014 年以前是个工具集, 前最常用的 Linux 包管理命令都被分散在了 apt-get、aptcache 和 apt-config 这三条命令中
+	在 2014 年apt命令发布第一个稳定版,Ubuntu 16.04 引入新特性之一便是 apt 命令. 相当于 apt-get、apt-cache 和 apt-config 中最常用命令选项的集合
+		apt 与 apt-get 有一些类似的命令选项，但它并不能完全向下兼容 apt-get 命令,也即可用 apt 替换部分apt-get 系列命令，但不是全部
+
+apt包索引配置文件
+	/etc/apt/sources.list
+	/etc/apt/sources.list.d
+
+apt 常见用法: 
+	apt install	 			# 在线安装软件包
+	apt remove 				# 删除包但保留配置文件, apt remove中添加--purge选项会删除包配置文件，谨慎使用
+	apt purge 				# 卸载单个软件包并删除配置⽂件
+	apt update			 	# 更新本地软件包列表索引, 修改了apt仓库后必须执⾏, 相当于 yum clean all;yum makecache
+	apt upgrade 			# 升级所有已安装且可升级到新版本的软件包. 要升级需首先更新软件包索引，再升级
+	apt autoremove			# 自动删除不需要的包
+	apt full-upgrade 		# 升级整个系统，必要时可以移除旧软件包。在升级软件包时自动处理依赖关系
+	apt search 				# 搜索安装包
+	apt show 				# 查看某个安装包的详细信息
+	apt list				# 列出仓库软件包（已安装，可升级等）, apt 特有的命令, 等于yum list
+	apt edit-sources 		# 编辑source源⽂件(列表), apt 特有的命令
+	apt autoremove			# 删除安装包并解决依赖关系
+
+	apt-cache madison nginx 			#查看仓库中软件包有哪些版本可以安装
+	apt install nginx=1.14.0-0ubuntu1	#安装软件包的时候指定安装具体的版本
+
+
+	# 查看文件来自于哪个包,类似 yum provides <filename>
+	apt-file search 'string'  				# 默认是包含此字符串的文件
+	apt-file search -x  '正则表达式'
+	apt-file search -F /path/file
+
+	apt purge ufw lxd lxd-client lxcfs liblxc-common	# 一次性删除多个包, install 、remove 等命令也支持一次性控制多个包
+
+范例: 查找不存在的文件存在于哪个包
+	apt -y install apt-file
+	apt update
+	apt-file search -x '/sl$'
+	apt-file search -F /usr/games/sl
+
+范例: 查看包相关信息
+	apt-cache stats			# 显示系统安装包的统计信息,可以统计已经安装包的数量，大小，占用空间等
+	apt-cache show xxx 		# 显示xxx包的信息,可以看到某个包的源、版本等信息.  
+	apt show xxx			# "apt-cache show"显示更详细
+
+范例: 查看仓库中的指定软件的所有版本	
+	apt-cache madison xxx		# 显示xxx软件包的版本及其来源
+	#apt -y install xxx=yyy		# 安装xxx软件包的指定yyy版本
+
+范例: 查看文件的依赖
+	apt   depends xxx
+	apt-cache depends xxx
+
+	apt rdepends xxx				# 查询软件xxx被哪些包依赖
+	apt-cache rdepends xxx
+	
+ubuntu建议安装的常用包:    
+	apt install iproute2 ntpdate tcpdump telnet traceroute nfs-kernel-server nfs-common lrzsz tree openssl libssl-dev libpcre3 libpcre3-dev zlib1g-dev gcc openssh-server iotop unzip zip
+
+
+

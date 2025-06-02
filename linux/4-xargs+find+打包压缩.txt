@@ -1,0 +1,243 @@
+========================================================================xargs==================================================================
+
+大部分命令不支持标准输入, xargs 可以接收键盘的标准输入, 把输入的结果用xargs传给xargs后面的命令,作为命令的参数，简单说就是 xargs 生成了命令的参数, 参数变为动态的了, 从而增强了命令的功能
+另外，许多命令不能接收过多参数，命令执行可能会失败，xargs 可以解决
+注意文件名或者是其他意义的名词内含有空格符的情况
+
+选项:
+    加 -i 参数直接用 {} 就能代替管道之前的标准输出的内容；
+    加 -I 参数 需要事先指定替换字符, 用来指定替换 {} 的字符，默认是 {}
+
+直接输 xargs, 等价于 xargs echo
+
+xargs ls -l             # 键盘输入后, ctrl + D 结束输入
+
+echo /opt | xargs ls -l
+ls f* | xargs rm
+
+seq 4 | xargs               # 多行合成一行
+seq 4 | xargs -n1           # -n1 表示用打印1列
+seq 4 | xargs -n2           # 打印2列 
+
+echo user{1..3} | xargs -n1 useradd         # 批量创建3个用户
+echo user{1..3} | xargs -n1 userdel -r      # 批量删除用户
+
+seq 100 | xargs -i -P10 wget -P /data http://10.0.0.8/{}.html
+    -P10, 并行运行10个进程
+    加 -i 参数直接用 {} 就能代替管道之前的标准输出的内容
+    
+pip3 install you-get; seq 10 | xargs -i -P3 you-get https://www.bilibili.com/video/BV1HZ4y1p7Bf?p={}    # 同时下载三个视频
+
+
+seq 1 5 | xargs -i echo "Item {}"       # -i 指定 {} 接收参数
+seq 1 5 | xargs -I @ echo "Item #@"     # -I 自定义符号接收参数
+
+========================================================================find===================================================================
+
+选项:
+	-name "文件名称" 	         # 支持使用glob，如：*, ?, [], [^],通配符要加双引号引起来
+	-iname "文件名称" 	         # 不区分字母大小写    
+    -regex “PATTERN” 	        # 以 PATTERN 匹配整个文件路径，而非文件名称
+    -type
+        f: 普通文件
+		d: 目录文件
+		l: 符号链接文件
+		s：套接字文件
+		b: 块设备文件
+		c: 字符设备文件
+		p: 管道文件
+    
+    -a		            # 与, 默认多个条件是与关系
+	-o		            # 或
+	!		            # 非, -not    
+    -atime              # 天为单位, a表示访问时间
+    -mtime              # m代表修改时间
+    -ctime              # c代表变更时间 
+
+    -amin               # 分钟为单位
+    -mmin
+    -cmin
+
+    -perm [/|-]MODE     # 根据权限查找
+
+处理动作
+    -exec COMMAND {} \; 		# 对查找到的每个文件执行由COMMAND指定的命令(掌握)
+    -ls						# 类似于对查找到的文件执行"ls -dils"命令格式输出
+    -print						# 默认的处理动作，显示至屏幕
+    -fls file					# 查找到的所有文件的长格式信息保存至指定文件中，相当于 -ls > file
+    -delete						# 删除查找到的文件，慎用！
+    -ok COMMAND {} \; 			# 对查找到的每个文件执行由COMMAND指定的命令，对于每个文件执行命令之前，都会交互式要求用户确认
+    {}							# 用于引用查找到的文件名称自身
+
+
+find /etc/ -type d -o -type l |wc -l        # 统计etc下的目录和文件共多少个 
+
+find /etc -maxdepth 2 -mindepth 2       
+
+find /data/test -depth       # 对每个目录先处理目录内的文件，再处理目录本身,默认是先处理目录,再处理文件
+
+find /app -type d -empty     # 查找 /app 目录下的空目录
+
+find /etc/ -type d -o -type f -ls | wc -l             # -type l -ls 表示是文件就运行 -ls 命令，相当于于 -type l -a -ls , 可以看出 -a 比 -0 的优先级高 
+find /etc/ -type d -o -type f -a -ls | wc -l
+find /etc/ \( -type d -o -type l \) -ls |wc -l        # 使用() 改变优先级
+
+find /etc -path '/etc/security' -a -prune -o -name "*.conf"
+    -path "模式"	匹配要排除的目录路径（支持通配符）
+    -prune	对匹配目录执行"剪枝"操作（阻止递归进入）,  -a -prune 表示当路径匹配时，执行剪枝 , 这里 -a 可省略
+
+find / -size +10G               # 查找大于 10G 的文件, 常用单位：k, M, G，c（byte）,注意大小写敏感
+find / -size 10G                # 查找 (9G,10G] 的文件
+find / -size -10G               # 查找 (0,9G] 的文件
+
+find / -atime 3                 # [3,4), 正好 n 天（从 n 天前到 n+1 天前）
+find / -atime +3                # [4,∞], 大于 n 天（n+1 天前）
+find / -atime -3                # [0,3), 小于 n 天（过去 n 天内）
+
+find [路径] -regextype 类型 -regex "正则表达式"
+    posix-basic	        基本正则表达式 (BRE),需转义元字符
+    posix-extended	    扩展正则表达式 (ERE),无需转义元字符
+
+find -name ".conf" -exec cp {} {}.orig \;                               #备份配置文件，添加.orig这个扩展名, {} 相当于占位符,表示前面查到的文件
+find /tmp -ctime +3 -user joe -ok rm {} \;                              #提示删除存在时间超过３天以上的joe的临时文件
+find ~ -perm -002 -exec chmod o-w {} \;                                 #在主目录中寻找可被其它用户写入的文件
+find /data –type f -perm 644 -name "*.sh" –exec chmod 755 {} \;         #查找/data下的权限为644，后缀为sh的普通文件，增加执行权限
+find / -delete                                                          #相当于 rm -rf /*
+
+find 经常和 xargs 命令进行组合:
+    find | xargs COMMAND	
+
+    find /bin/ -perm /7000 | xargs ls -Sl       # / 表示或 , /7 表示或有SUID、SGID、STICKY
+        
+    如何删除 `touch 'a b'` 这个文件 ?
+    find -type f -print0 | xargs -0 rm          # -print0就是用ascii中的0作为切割元素的分隔符，-0 表示指定 0 作为切割文件名的分隔符。这样就规避了空格带来的问题
+
+
+======================================================================打包压缩==================================================================
+
+比如文本文件适合压缩， MP4、MP3等就不适合压缩！
+
+compress、gzip、bzip2、xz 只能打包单个文件,不能打包文件夹.
+zip 能处理文件夹,但可能会丢失文件属性信息, 所以一般将 gzip、bzip2、xz 配合 tar 使用
+tar 能打包多个文件或文件夹(tar 打包文件或文件夹后占用的空间不变, 只是把多个文件变成一个文件), 然后再将包压缩.  
+
+总结:
+	gz的压缩比不是最高的，但是效率高，综合效果好! gz和bzip2相对用的更普及! xz虽然压缩比高,但是时间太慢!压缩比越高,压缩花费的时间越多
+	compress 用的较少, gzip、bzip2、xz 单独用的比较少, 要配合tar用. zip能压缩文件和文件夹,用的较多
+	gzip、bzip、xz、zip、tar 都支持管道
+
+(了解) compress 和 uncompress ,	压缩比比较渣!, 对应的文件是 .Z 后缀
+
+gzip和gunzip，来自于 gzip 包，对应 .gz 后缀文件
+	格式:
+		gzip [OPTION]... FILE ...
+	
+	常用选项：
+		-k 		keep, 保留原文件,CentOS 8 新特性
+		-d 		解压缩，相当于gunzip
+		-c 		结果输出至标准输出，保留原文件不改变
+		-# 		指定压缩比，#取值为1-9，值越大压缩比越大
+	
+    实例
+        gzip FILE                       压缩文件,压缩成功后删除原文件
+        gzip -k FILE                    压缩文件,压缩成功后不删除原文件
+        cat messages | gzip > m.gz      把命令运行的结果进行压缩生成一个文件(常用)
+	
+        gzip -d FILE.gz                 解压缩
+        gunzip FILE.gz                  解压缩   
+	
+bzip2和bunzip2，来自于 bzip2 包，对应 .bz2 后缀文件
+	格式:
+		bzip2 [OPTION]... FILE ...
+
+	常用选项
+		-k 		keep, 保留原文件
+		-d 		解压缩，相当于  bunzip2
+		-c 		结果输出至标准输出，保留原文件不改变
+		-# 		1-9，压缩比，默认为9
+	
+	范例：
+		bzip2 FILE				压缩
+		bzip2 -d file.bz2 		解压缩
+		bunzip2 file.bz2 		解压缩
+		bzcat file.bz2 			不显式解压缩的前提下查看文本文件内容
+
+xz 和 unxz，来自于 xz 包，对应 .xz 后缀文件
+	格式
+		xz [OPTION]... FILE ...
+		
+	常用选项
+		-k keep, 保留原文件
+		-d 解压缩
+		-c 结果输出至标准输出，保留原文件不改变
+		-# 压缩比，取值1-9，默认为6
+
+	范例：
+		xz	FILE			#压缩
+		unxz file.xz 		#解压缩
+		xzcat file.xz 		#不显式解压缩的前提下查看文本文件内容
+
+
+zip 和 unzip，zip (来自 zip 和 unzip 包,对应 .zip 后缀文件)可以打包目录和多个文件成一个文件，并压缩，但可能会丢失文件属性信息，如：所有者和组信息，一般建议使用 tar 代替
+
+	zip -r etc.zip /etc     #压缩文件夹 比如加-r, -r表示递归 
+	unzip etc.zip           #解压缩
+
+	zip -e example.zip *    #交互式加密,运行命令后需要手动输入密码, *代表当前目录下的文件
+	unzip example.zip       #交互式解密
+	
+	zip -P 123456 example.zip *        # 非交互式加密，-P指定密码
+	unzip -P 123456 example.zip
+	
+
+tar，tar 即 Tape ARchive 磁带归档, 对应 .tar 后缀文件, 可以对目录和多个文件打包一个文件, 并且可以压缩, 保留文件属性不丢失, 常用于备份功能, 推荐使用
+	
+	常用选项
+		c  打包
+		f  打包成一个文件
+		z  代表gzip(.gz), 自动会调用gzip命令来压缩
+		j  代表bzip2(.bz2), 自动调用bzip2来对包进行压缩
+		J  代表xz(.xz), 自动调用xz来对包进行压缩
+		x  解包
+        t  预览
+		v  显示解压过程中的详细信息(每个文件的大小属性)
+		--exclude 	表示排除
+		-T 	选项指定输入文件
+		-X 	选项指定包含要排除的文件列表
+	
+    范例：
+		tar cf etc.tar /etc/            # 打包
+		tar zcf etc.tar.gz /etc/        # 打包, 并使用gzip压缩包. 打包压缩是两个动作(先打包,后压缩包)
+		tar jcf etc.tar.gz2 /etc/       # 打包, 并使用bzip2压缩包
+		tar Jcf etc.tar.xz /etc/        # 打包, 并使用xz压缩包
+
+
+		tar tvf etc.tar                 # 预览包里面有什么文件，t 预览，v显示解压过程中的详细信息，f表示使用文件, 
+		tar xvf etc.tar                 # x 解包, v 显示解压过程中的详细信息, 默认解压到当前路径
+		tar xvf etc.tar -C /tmp         # -C 指定解包的目标路径
+		tar xvzf etc.tar.gz -C /tmp     # 使用 gzip 解压缩, 然后解包
+		
+		tar zcvf /root/a.tgz --exclude=/app/host1 --exclude=/app/host2 /app         # 打包 /app 文件夹,--exclude 表示排除 
+		tar zcvf mybackup.tgz -T /root/includefilelist -X /root/excludefilelist     #  includefilelist 这个文件中列出的文件才打包, excludefilelist 中的文件不打包
+
+		
+split，分割一个文件为多个文件, 有些服务器对上传的包有大小限制,就可以通过这种方法将一个大包分割成多个小文件上传
+	
+	常用选项:
+		-b 指定大小
+		-d 切出来的文件自动加数字, 不加此参数, 切出来的文件编号就是 aa ab ac 等形式		
+	
+	split -b 1M -d bigfile /opt/bigfile-            # 加-d,切割出来的文件名为 bigfile-00、bigfile-01、bigfile-02、...
+	split -b 1M  bigfile /opt/bigfile-              # 不加-d,切割出来的文件名为 bigfile-aa、bigfile-ab、bigfile-ac、...
+	cat bigfile-** > bigfile2                       # 将切割的文件组合成源文件
+
+
+cpio(了解)，现在基本上不用，很少见. cpio文件类似于tar文件,就是一个打包文件
+	
+    file /boot/initramfs-3.10.0-1160.el7.x86_64.img                                     #在linux中,有些地方能看到cpio格式文件
+	/boot/initramfs-3.10.0-1160.el7.x86_64.img: ASCII cpio archive (SVR4 with no CRC)	
+	
+	cpio –tv < /boot/initramfs-3.10.0-1160.el7.x86_64.img                               #内容预览
+	cpio –idv < /boot/initramfs-3.10.0-1160.el7.x86_64.img                              #解包文件,解到当前目录
+	cd /tmp/; cpio –idv < /boot/initramfs-3.10.0-1160.el7.x86_64.img                    #解包到指定目录
+

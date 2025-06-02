@@ -1,0 +1,498 @@
+
+=======================================================================grep=====================================================================
+
+grep [OPTIONS] PATTERN [FILE...]
+	常见选项：
+        -E              使用ERE，相当于egrep
+        -o              仅显示匹配到的字符串
+        -e              实现多个选项间的逻辑or关系,如：grep –e ‘cat ' -e ‘dog' file
+        -w              匹配整个单词
+        -n              显示匹配的行号
+        -c              统计匹配的行数
+        -i              忽略字符大小写
+        -F              不支持正则表达式，相当于fgrep
+        -v              显示不被pattern匹配到的行,即取反
+		-color=auto     对匹配到的文本着色显示
+		-m #            匹配#次后停止
+		-q              静默模式，不输出任何信息
+		-A #            显示找到的行, 以及显示行下面的多少行
+		-B #            显示找到的行, 以及显示行前面的多少行
+		-C #            显示找到的行, 以及显示行前面的多少行和后面的多少行,
+		-f              把正则表达式写在文件里
+		-r              递归目录，但不处理软链接， "rep -r root /etc", 搜索etc目录下的文件内容包含 root
+		-R              递归目录，但处理软链接
+
+实例: 统计年龄综合
+    user.txt 的内容如下:
+    zhangsan=20
+    lisi=30
+    
+    cut -d"=" -f2 user.txt | paste -d+ -s | bc
+    grep -Eo '[0-9]+'  | paste -d+ -s | bc
+    grep -Eo '[0-9]+'  | tr '\n' + | grep -o '^.*[^+]' | bc
+
+
+
+=======================================================================sed======================================================================
+
+sed (Stream EDitor), 行编辑器, 既能查看文本也能修改文本, 常用在脚本中修改配置文件, 支持标准输入、重定向、管道
+
+sed [OPTION]... {script-only-if-no-other-script} [input-file]...                
+
+选项:
+    -n          不输出模式空间内容到屏幕，即不自动打印
+    -e          多点编辑
+    -f FILE     从指定文件中读取编辑脚本
+    -r, -E      使用扩展正则表达式
+    -i.bak      备份文件并原处编辑,".bak"可以自定义为其它字符
+    -i          编辑文件无备份
+    -s          将多个文件视为独立文件，而不是单个连续的长文件流
+
+选项组合:
+    -i -r       支持
+    -ri         支持
+    -ir         不支持
+    -ni         会清空文件
+
+script(是sed自己的script)格式：
+	'地址命令'
+
+地址格式：
+    1. 不给地址：对全文进行处理
+    2. 单地址：
+        #				  	指定的行，$：最后一行
+        /pattern/			被此处模式所能够匹配到的每一行
+    3. 地址范围：
+        #,# 				从#行到第#行，3，6 从第3行到第6行
+        #,+# 				从#行到+#行，3,+4 表示从3行到第7行
+        /pat1/,/pat2/
+        #,/pat/
+        /pat/,#
+    4. 步进：~
+        1~2 奇数行
+		2~2 偶数行
+
+命令(可以组合,比如 !p)：
+    p 			打印当前模式空间内容，追加到默认输出之后
+    Ip 			忽略大小写输出
+    d 			删除模式空间匹配的行，并立即启用下一轮循环
+    a [\]text 	在指定行后面追加文本，支持使用\n实现多行追加
+    i [\]text 	在行前面插入文本
+    c [\]text 	替换行为单行或多行文本
+    w file 		保存模式匹配的行至指定文件
+    r file 		读取指定文件的文本至模式空间中匹配到的行后
+    = 			为模式空间中的行打印行号
+    ! 			模式空间中匹配行取反处理 (了解)
+    q 			结束或退出sed
+
+
+查找替代(sed的核心用法):
+    s/pattern/string/修饰符 		                查找替换,支持使用其它分隔符，可以是其它形式：s@@@，s###
+    替换修饰符：
+        g               行内全局替换
+        p               显示替换成功的行
+        w /PATH/FILE    将替换成功的行保存至文件中
+        I,i             忽略大小写
+
+
+sed ''                              # 默认的行为是读什么打印什么
+sed '' /etc/fstab                   # 等价 cat /etc/fstab
+
+seq 2 | sed p                       # sed自身打印 + p打印=打印两次
+seq 2 | sed -n p                    # 关闭sed自身打印
+seq 5 9 | sed -n 2p                 # 打印第2行, 2p可加引号，也可不加, 养成加引号的习惯 
+
+sed -n '/root/p' /etc/passwd        # /root/ 是地址, p是命令. 正则表达式和p命令连用, 相当于 "grep root /etc/passwd"
+sed -n '/root/,p' /etc/passwd       # 报错
+
+sed -n '/^r/,3p' /etc/passwd        # 匹配到"^r"的行, 如果此行小于3, 打印出区间行。如果后面的行还能匹配到"^r", 那么打印出这些匹配到的行
+
+sed -n '/^b/,/^f/p' /etc/passwd     # 打印锁定范围的行
+
+seq 10 | sed -n '3,6p'              # 打印3到6行
+seq 10 | sed -n '3,+4p'             # 打印3到7行
+
+seq 10 | sed -n '5~2p               # 步进
+seq 10 | sed -n '6~2p'              # 步进
+
+seq 3 | sed '2d'                    # 删除第2行, 不是真正的删除
+seq 10 | sed '3~3d'                 # 3,6,9行被删除
+
+sed '2~2d' test.txt                 # test.txt 里面的行不会被真正删除，有备份才会被真正删除
+cat /etc/fstab | sed '/^#/d'        #  删除 # 开头的行
+
+
+重要:
+    -i 经常用于修改配置文件,尤其在脚本中使用,批量改脚本
+    a 命令表示在指定行后面追加, 追加也常用来改配置文件
+    i 命令表示在前面行前面追加, 追加也常用来改配置文件
+
+sed -i.bak '2~2d' test.txt          # test.txt 会备份为 test.txt.bak, test.txt 里面的行会被真正删除, ".bak"也可以定义成其它的后缀
+
+seq 3 | sed '2aHelloSed'            # 在第2行后插入 HelloSed
+
+seq 3 | sed '2a\ Hello\nSed'        # 如果要空格抬头,加\, \ 表示后面的内容全是追加的内容. \n 表示换行
+
+sed -i '3aalias x=ls' test.txt      # 会修改源文件,不会备份,不会打印到屏幕
+sed '3aalias x=ls' test.txt         # 不修改源文件,会打印到屏幕
+sed -i '2ialias x=ls' test.txt       
+
+seq 3 | sed '2cHelloSed'                # c 命令表替换
+sed /^U/cHelloSed test.txt              # U开头的行替换为 HelloSed
+
+seq 4 6 | sed '2r ./test.txt'           # r 命令表读,  读出 test.txt 文件内容放在第二行后面
+seq 4 6 | sed '2~2r ./test.txt'         # 把 test.txt 文件内容 放在 每一个偶数行的后面,有多少偶数行就添加多少次
+
+seq 3 | sed '2='                        # = 命令加行号, 给第二行加上行号,是加在行的上方 (了解)
+seq 5 | sed -n '1~2!p'                  # ! 命令表示取反,  1~2 表示取奇数行, 那就是取偶数行.  如果不写 p, 为什么会报错?
+
+
+查找替代(sed的核心用法)
+sed 's/root/admin/' ./test.txt | grep "admin"           # 如果一行有多个可以匹配，默认只处理第一个
+sed 's/root/admin/g' ./test.txt | grep "admin"          # g命令 全局替换
+sed 's/r..t/&er/g' ./test.txt | grep "ter"              # 把 r..t 变为 r..ter, 使用 & 符号, & 符号相当于一个变量, 保存着 r..t 匹配到的字符串
+
+分组(核心用法)：使用()进行分组,把匹配到的字符串分块,然后可以对块分别处理
+echo xyz123abc | sed -r 's/(xyz)(123)(abc)/\1/'                     # -r 使用扩展正则表达式      
+echo xyz123abc | sed -r 's/(xyz)(123)(abc)/\2/'
+echo xyz123abc | sed -r 's/(xyz)(123)(abc)/\1\3/'
+
+ifconfig ens3 | sed -rn '2s/.*inet ([0-9.]+)  netmask.*/\1/p'                       # 取ip地址, 2s 处理第2行
+ifconfig ens3 | sed -rn '2s/.*inet ([0-9.]+)  .*/\1/p'
+echo /etc/sysconfig/network-scripts/ifcfg-ens3 | sed -nr 's@^(.*)/([^/]+)\1@@p'     # "\1@@p"这种写法虽然错误,但是能打印正常结果,不知道为什么? 推荐下面行的规范写法    
+echo /etc/sysconfig/network-scripts/ifcfg-ens3 | sed -nr 's@^(.*)/([^/]+)@\1@p'     # 自定义分隔符,比如 s@@@、s### 等格式
+echo /etc/sysconfig/network-scripts/ifcfg-ens3 | sed -nr 's@^(.*)/([^/]+)@\2@p'
+
+sed -ri 's/^(SELINUX=).*/\1disabled/' test.txt          # echo  test.txt 的内容是 SELINUX=enforcing 
+
+
+多点编辑
+    cat test.config
+    port: 8080
+    #ServiceName www.examaple.com
+
+    sed -i -r -e 's/port: 8080/port: 80/'  -e 's/^#(ServiceName.*)/\1/' test.config         # 8080 改为 80,  去除第二行的 # . -e 指出多个匹配条件
+    
+    注意 ir 位置的写法：
+         -ir            报错
+         -ri            成功
+         -i -r          成功
+         -r -i          成功          
+
+sed支持变量: 不同的机器安装同一个服务，配置文件中有些变量的值可能不一样
+
+    name=root
+    sed -nr "/$name/p" /etc/passwd              # 不能用单引号,单引号里面的内容会被认为是字符串
+    sed -nr '/'$name'/p' /etc/passwd            # 这种用法可以
+
+
+	port=8080
+	
+    cat test.config
+	Listen 80
+	#ServerName www.example.com:80
+
+    sed -ri.bak -e 's/^Listen 80/Listen '$port'/' -e "/ServerName/c ServerName `hostname`:$port"  test.config
+
+
+sed高级用法(了解):
+    sed 中除了模式空间，还有保持空间(Hold Space),利用此空间可以将模式空间中的数据临时保存至保持空间,从而后续接着处理
+
+    常见的高级命令:
+		h       把模式空间中的内容覆盖至保持空间中
+		G       从保持空间取出内容追加至模式空间
+		n       读取匹配到的行的下一行覆盖至模式空间
+		N       读取匹配到的行的下一行追加至模式空间
+		d       删除模式空间中的行
+        其它.....
+     
+
+    seq 10 | sed -n 'n;p'               #  n 读取下一行到模式空间(跳过当前行), 
+    seq 10 | sed 'N;s/\n//'             #  N 读取匹配到的行的下一行追加至模式空间, s/\n// 表示替换换行符
+    seq 3 | sed '1!G;h;$!d'             #  反转输出,相当于  seq 3 | tac
+        第 1 行 (内容:1)
+            1!G     第一行跳过 G 命令
+            h       将模式空间的 1 复制到保持空间（此时保持空间为 1）
+            $!d     非最后一行，执行 d 命令 → 删除模式空间内容，跳过默认输出
+        第 2 行 (内容:2)
+            1!G     非第一行，执行 G → 将保持空间的 1 追加到模式空间，变为 2\n1
+            h       将模式空间的 2\n1 覆盖到保持空间
+            $!d     非最后一行，执行 d → 删除模式空间内容
+         第 3 行 (内容:3)
+            1!G     执行 G → 保持空间的 2\n1 追加到模式空间，变为 3\n2\n1
+            h       将模式空间的 3\n2\n1 覆盖到保持空间
+            $!d     最后一行，跳过 d 命令 → 输出模式空间内容 3\n2\n1
+
+=======================================================================awk======================================================================
+
+awk(Aho, Weinberger, Kernighan) 主要用来格式输出，逐列处理. 模式扫描和处理语言，可以实现下面功能：
+
+which awk
+
+格式：
+    awk [options] 'program' var=value file…                 #  program 通常是被放在单引号中，并可以由三种部分组成：BEGIN语句块、模式匹配的通用语句块、END语句块
+    awk [options] -f programfile var=value file…
+
+    options：
+        -F         # 指明输入时用到的字段分隔符，默认的分隔符是若干个连续空白符
+        -v         # var=value 变量赋值
+   
+    program 格式：
+        pattern{action statements;..}  
+
+        pattern 决定动作语句何时触发及触发事件，比如 BEGIN、END、正则表达式等, pattern 其实就是过滤特定行的条件！     
+
+        action 分类:
+            输出语句, 如 print、printf
+            算术，比较表达式
+            输入语句
+            组合语句
+                { statements;… } 
+            控制语句, 如 if、while 等
+                if(condition) {statements;…}   
+                if(condition) {statements;…} else {statements;…}
+                while(conditon) {statments;…}
+                do {statements;…} while(condition)
+                for(expr1;expr2;expr3) {statements;…}
+            	break
+		        continue
+		        exit    
+
+===================================入门====================================
+
+awk '{}'                                       # 运行后等待输入，说明awk支持标准输入 
+
+echo {a..d} | awk '{print $0}'                  # $0 表示打印全部列
+
+echo {a..d} | awk '{print $1 $3}'               # 两列挨一起
+echo {a..d} | awk '{print $1, $3}'              # 两列以空格隔开
+echo {a..d} | awk '{print $1, "@", $3}'         # 两列以@隔开, 并且 @ 字符两边有空格，如  a @ c
+    echo {a..d} | awk '{print $1 "@" $3}'          # 两列以@隔开, 并且 @ 字符没有空格，如  a@c
+echo {a..d} | awk '{print $1 "\t" $3}'          # 两列以制表符隔开
+
+awk -F: '{print $1, $3}' /etc/passwd             # 两列以制表符隔开, 使用 : 作为分隔符    
+df | awk -F"[[:space:]]+|%" '{print $5}'         # 使用正则表达式作为分隔符, "[[:space:]]+|%"表示1个或多个空格 或 %   
+df | awk -F"[ %]+" '{print $5}'                  # "[ %]+"表示1个或多个空格, 或 1个%，或多个% 
+
+=================================基本用法==================================
+
+内置变量:
+    FS                  # 输入字段分隔符，默认为空白字符,功能相当于 -F , 两者同时使用 -F 优先级更高
+    NF                  # 统计每行的列数
+    NR                  # 行号
+    OFS                 # 输出字段分隔符，默认为空白字符(很少用)
+    RS                  # 输入记录record分隔符，指定输入时的换行符(很少用)
+    ORS                 # 输出记录分隔符，输出时用指定符号代替换行符(很少用)
+    FNR                 # 各文件分别计数，记录的编号
+    FILENAME            # 当前文件名
+    ARGC                # 命令行参数的个数
+    ARGV                # 数组，保存的是命令行所给定的各参数，每一个参数：ARGV[0]，......
+
+
+    awk -v FS=':' '{print $1,FS,$3}' /etc/passwd                    # 指定变量参数要用 -v
+    flag=":"; awk -v FS=$flag '{print $1,FS,$3}' /etc/passwd        # 把shell变量传递给内置变量FS
+
+    awk -v FS=':' '{print NF}' /etc/passwd              # 统计每行的列数
+    awk -v FS=':' '{print $NF}' /etc/passwd             # NF表示每行的列数, $NF代表最后1行, 这里表示打印最后一列
+    awk -v FS=':' '{print $(NF-1)}' /etc/passwd 
+
+    awk '{print NR, $1}' /etc/passwd                    # 打印第一列，并标上行号
+    ifconfig eth0 | awk 'NR==2{print $2}'               # NR==2 表示只处理第二行
+
+    awk '{print FNR}' /etc/issue /etc/os-release             # 打印"/etc/issue"每行的行号,再接着打印"/etc/os-release"每行的行号
+    awk '{print FNR,FILENAME}' /etc/issue /etc/os-release    # 打印的内容是 行号以及当前文件名   
+
+    awk '{print ARGC, ARGV[0],ARGV[1],ARGV[2]}' /etc/issue /etc/os-release   # 命令行参数的个数 , ARGV 保存命令行所给定的各参数的数组
+        参数个数为 3
+        三个参数分别为: awk 、/etc/issue 、/etc/os-release 
+
+
+自定义变量: 区分字符大小写
+    -v var=value
+    在program中直接定义
+
+    awk -v test1=test2="hello awk" 'BEGIN{print test1,test2}'           # 在{}外面不支持 test1=test2="hello awk" 这种写法 
+    awk 'BEGIN {test1=test2="hello awk"; print test1, test2}'           # 在{}里面支持 test1=test2="hello awk" 这种写法 
+
+
+动作 printf, 可以实现格式化输出. 主要用来打印表格
+    格式如下:
+        printf “FORMAT”, item1, item2, ...
+
+    awk -F: 'BEGIN{printf"-----------------\n%-5s|%10s|\n-----------------\n","username","uid"}{printf"%-5s|%10d|\n-----------------\n",$1,$3}END{print "finished"}' /etc/passwd  
+
+
+操作符:
+    awk 'BEGIN{i=0;print i++,i}'            
+    awk 'BEGIN{i=0;print ++i,i}'
+
+
+模式PATTERN :   
+    根据pattern条件，过滤匹配的行，再做处理
+    如果未指定：空模式，匹配每一行
+
+    awk '/^r/' /etc/passwd                  # 过滤出以r开头的行，"/ /"里面是正则表达式
+    awk '/^r/{print $0}' /etc/passw         # 等价 "awk '/^r/' /etc/passwd"
+    ifconfig eth0 | awk '/netmask/{print $2}'
+
+    awk -F: '$1 ~ /root/' /etc/passwd       # 打印出 每行第一个字段包含 root 的行
+    awk '$0 ~ /^root/' /etc/passwd          # 打印出以root开头的行, $0 表示整行
+    awk -F: '/Network/' /etc/passwd         # 打印出包含 NetWork的行
+
+
+关系表达式：
+    seq 2 | awk '0{print $0}'               # 0 是假所以不打印
+    seq 2 | awk '1{print $0}' 
+
+    seq 2 | awk '""{print $0}'              # 空字符串是假所以不打印
+    seq 2 | awk '" "{print $0}'             
+
+    seq 2 | awk -v n=0 'n'			        # 为0不打印
+    seq 2 | awk -v str='' 'str'		        # str为空字符串，不打印
+
+    seq 2 | awk -v n=1 'n'                  # 等价于：seq 2 | awk -v n=1 'n{print $0}'
+    seq 2 | awk -v str=' ' 'str'		    # 等价于：seq 2 | awk -v str=' ' 'str{print $0}'
+    seq 3 | awk 'n++'		                # 没有定义n，所以默认为0， seq 3 | awk 'n++' 是 seq 3 | awk -v n=0 'n++{print $0}'  的缩写
+    seq 3 | awk -v n=0 '!n++'			    # "!"表示取反
+
+    awk -F: '{$3>=1000?usertype="CommonUser":usertype="SysUser";printf "%-10s:%8s\n",$1,usertype}' /etc/passwd    # 支持三目表达式
+
+    seq 5 | awk 'i=!i'                      # 取奇数行, i 没有被定义，默认为0, 取反为真，i在真或反之间变换实现取奇数
+    seq 5 | awk '!(i=!i)'                   # 取偶数行
+    seq 5 | awk -v i=1 'i=!i'               # 取偶数行
+
+行范围:
+    seq 100 | awk 'NR==99'
+    seq 10 | awk 'NR>=9'
+    seq 10 | awk 'NR>=9 && NR<=10'
+    awk '/^b/,/^s/' /etc/passwd	            # 取以b开头的行到以s开头的行, "/ /"里面是正则表达式
+
+=================================高级用法==================================
+
+条件判断 if-else, 对awk取得的整行或某个字段做条件判断
+    awk -F: '{if($3>=1000)print $1,$3}' /etc/passwd  	     # 等价 awk -F: '{if($3>=1000){print $1,$3}}' /etc/passwd ， 如果只有一个指令，可以不加花括号
+    awk -F: '{if($3<=100){print "<=100",$3}else if ($3<=1000) {print "<=1000",$3}else{print ">=1000",$3}}' /etc/passwd
+
+循环 while, 条件“真”，进入循环；条件“假”，退出循环
+    使用场景：
+		对一行内的多个字段逐一类似处理时使用
+		对数组中的各元素逐一处理时使用
+    
+    awk -v i=1 -v sum=0 'BEGIN{while(i<=100){sum+=i;i++};print sum}'
+    awk 'BEGIN{print length("abc")}'
+
+    awk '/^[[:space:]]*linux16/{i=1;while(i<=NF){print $i,length($i); i++}}' /etc/grub2.cfg
+
+循环 for
+    for(expr1;expr2;expr3) {statement;…}
+
+	常见用法：
+		for(variable assignment;condition;iteration process) {for-body}
+	
+	特殊用法：能够遍历数组中的元素
+		for(var in array) {for-body}
+
+    awk 'BEGIN{sum=0;for(i=1;i<=100;i++){sum+=i};print sum}'
+    
+    time awk 'BEGIN{sum=0;for(i=1;i<=100;i++){sum+=i};print sum}'       # 在命令前加上time,可得到命名运行所花费的时间
+
+循环 do-while(了解), 无论真假，至少执行一次循环体
+    do {statement;…}while(condition)
+
+条件判断 switch (了解)
+    switch(expression) {case VALUE1 or /REGEXP/: statement1; case VALUE2 or /REGEXP2/: statement2; ...; default: statementn}
+
+continue、break: continue 中断本次循环, break 中断整个循环.
+    格式： 
+        continue [n]
+        break [n]
+    
+    awk 'BEGIN{for(i=1;i<=100;i++){if(i==50)continue;sum+=i};print sum}'
+    #awk 'BEGIN{for(i=1;i<=100;i++){if(i==50)break;sum+=i};print sum}'
+
+next, 可以提前结束对本行处理而直接进入下一行处理(awk自身循环)    
+    awk -F: '{if($3%2!=0) next; print $1,$3}' /etc/passwd
+
+数组：awk的数组为关联数组
+    格式：
+		array_name[index-expression]
+    index-expression
+        利用数组实现 k/v 功能; 
+		可使用任意字符串；字符串要使用双引号括起来
+		如果某数组元素事先不存在，在引用时，awk会自动创建此元素，并将其值初始化为“空串”
+		若要判断数组中是否存在某元素，要使用“index in array”格式进行遍历
+    
+    awk 'BEGIN{weekdays["mon"]="Monday";weekdays["tue"]="Tuesday";print weekdays["mon"]}'
+    awk 'BEGIN{config[1]="value1";config[2]="value2";config[3]="value3";for(item in config){print item":"config[item]}}'    # 使用 for(var in array) {for-body} 便利数组
+
+
+awk 函数(了解)
+
+    常见内置函数:
+        数值处理:
+            rand()                  # 返回0和1之间一个随机数
+            srand()                 # 配合rand() 函数,生成随机数的种子
+            int()                   # 返回整数
+        
+        字符串处理:
+            length([s])             # 返回指定字符串的长度
+            sub(r,s,[t])            # 对t字符串搜索r表示模式匹配的内容，并将第一个匹配内容替换为s
+            gsub(r,s,[t])           # 对t字符串进行搜索r表示的模式匹配的内容，并全部替换为s所表示的内容
+            split(s,array,[r])      # 以r为分隔符，切割字符串s，并将切割后的结果保存至array所表示的数组中，第一个索引值为1,第二个索引值为2,…
+        
+        可以awk中调用shell命令:
+            system('cmd')
+            
+        时间函数:
+            systime()               # 当前时间到1970年1月1日的秒数
+            strftime()              # 指定时间格式
+
+        awk 'BEGIN{srand();print rand()}'                                   # 生成随机数, 如果敲的太块，随机数来不及生成新的，结果就会和上次一样 ！
+        echo "2008:08:08 08:08:08" | awk 'gsub(/:/,"-",$1)'		            # gsub 表示全部替换
+        awk 'BEGIN{system("hostname")}'                                     # awk中调用shell命令
+        awk 'BEGIN{print strftime("%Y-%m-%dT%H:%M",systime()-3600)}'        # 显示出当前时间的前一个小时时间
+    
+    自定义函数:
+        自定义函数格式：
+            function name ( parameter, parameter, ... ) {
+                statements
+                return expression
+            }	
+
+        cat func.awk
+        function max(x,y) {
+                x>y?var=x:var=y
+                return var
+        }
+        BEGIN{print max(a,b)
+
+        awk -v a=30 -v b=20 -f func.awk
+
+
+awk 脚本:将awk程序写成脚本，直接调用或执行
+
+
+    awk -F: -f passwd.awk /etc/passwd       # passwd.awk 的内容为  {if($3>=1000)print $1,$3}
+
+
+    cat test.awk
+	#!/bin/awk -f
+	#this is a awk script
+	{if($3>=1000)print $1,$3
+
+    chmod +x test.awk; ./test.awk -F: /etc/passwd            #  直接调用
+
+
+    向awk脚本传递参数  
+        格式：
+            awkfile var=value var2=value2... Inputfile
+        注意：
+		    在BEGIN过程中不可用。直到首行输入完成以后，变量才可用。可以通过-v 参数，让awk在执行BEGIN之前得到变量的值。
+		    命令行中每一个指定的变量都需要一个-v参数, 也就是说，被加过-v选项的变量，BEGIN里面的逻辑才能得到变量值，否则得不到 ！
+        
+        cat test2.awk
+        #!/bin/awk -f
+        {if($3 >=min && $3<=max)print $1,$3}
+
+        chmod +x test2.awk; ./test2.awk -F: min=100 max=200 /etc/passwd
+
