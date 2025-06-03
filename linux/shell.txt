@@ -1158,7 +1158,7 @@ eval 命令(重点):
 		
 		echo ${!ceo}			# 方式2 取间接变量
 
-方式三取间接变量(使用declare新特性取间接变量)
+方式2取间接变量(使用declare新特性取间接变量)
 	title=ceo
 	ceo='is you'
 
