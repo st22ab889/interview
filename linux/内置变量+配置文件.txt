@@ -39,11 +39,14 @@ Autofs
 系统变量：
     echo $PATH	
     echo $SHELL
-    echo $PS1
+    echo $PS1               # PS1命令是linux系统中的一个全局变量，用于定义用户命令行的字符显示
+    echo $PS2               # 影响多行重定向的提示信息
+    echo $PS3               # Shell脚本中使用select时的提示符
+    echo $PS4               # "set -x"显示脚本执行过程并将脚本内的变量的值暴露出来。PS4可以用来定义其打印出来的内容的前缀
     echo $LANG
     echo $OLDPWD
     echo $RANDOM            # 生成一个0到32767之间的一个随机数
-
+    echo $$                 # 当前shell的进程编号
 
 配置文件和目录:
     /etc/sudoers
@@ -86,3 +89,37 @@ VNC:
     VNC 是在基于 UNIX 和 Linux 操作系统的免费的开源软件,远程控制能力强大,高效实用,其性能可以和 Windows 和 MAC 中的任何远程控制软件媲美。
     VNC 连接无界面系统时，可能只能看到命令行窗口，因为没有默认的桌面环境。如果需要运行图形界面程序，还需要安装相应的桌面环境，如 GNOME、KDE、XFCE 等，并进行相关配置。
     也可以在linux上安装 Xvfb（一个轻量级的虚拟显示服务程序）和 x11vnc，让 x11vnc 连接 Xvfb 并转换成 VNC 协议，这样可以在不启动实际图形界面的情况下提供 VNC 服
+
+apache server:
+    yum install httpd
+    apt install apache2 
+
+PS4："set -x"显示脚本执行过程并将脚本内的变量的值暴露出来。PS4可以用来定义其打印出来的内容的前缀
+
+    [root@localhost ~]#cat test.sh
+    #!/bin/bash
+    set -x									# set -x 是开启，set +x 是关闭，set -o 是查看 (xtrace)，set去追踪一段代码的显示情况。
+    echo "PS4 demo script"
+    ls -l /etc/ | wc -l		
+    
+    [root@localhost ~]#bash test.sh
+    + echo 'PS4 demo script'				# 当使用 sex -x 跟踪输出时的提示符为 +
+    PS4 demo script
+    + ls -l /etc/
+    + wc -l
+    199	
+
+    
+    [root@localhost ~]#cat test.sh
+    #!/bin/bash
+    export PS4='$0.$LINENO+ '				# $0 显示当前的脚本名；$LINENO 显示当前的行号
+    set -x
+    echo "PS4 demo script"
+    ls -l /etc/ | wc -l		
+    
+    [root@localhost ~]#bash test.sh
+    test.sh.4+ echo 'PS4 demo script'		# 使用PS4后使 "{script-name}.{line-number}+" 成为 set –x 的命令提示符
+    PS4 demo script
+    test.sh.5+ ls -l /etc/
+    test.sh.5+ wc -l
+    199	
