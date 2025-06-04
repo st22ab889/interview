@@ -1,6 +1,4 @@
-
 =======================================================================shell=====================================================================
-
 
 #!/bin/bash						#首行She-bang机制
 
@@ -9,8 +7,12 @@ curl -s "https://raw.githubusercontent.com/chiakge/Linux-NetSpeed/master/tcp.sh"
 
 wget -O - "https://raw.githubusercontent.com/chiakge/Linux-NetSpeed/master/tcp.sh" | bash
 
-bash -n tcpx.sh			# -n 检查语法
-bash -x tcpx.sh			# -x 调试脚本，跟踪脚本运行过程 
+bash -n -x tcpx.sh			# 开子shell运行脚本. -n 检查语法, -x 调试脚本(跟踪脚本运行过程) 
+sh tcpx.sh					# 同上
+./tcpx.sh					# 同上	
+
+source tcpx.sh				# 在当前shell运行脚本
+. tcpx.sh					# 同上
 
 ==============================内置变量+普通变量==============================
 
@@ -22,10 +24,8 @@ unset ab
 
 echo ${title}_$name     # 如果不加{},会把"title_"当成一个变量
 
-
 dcmd='ls -al'			# 实现动态命令
 $dcmd
-
 
 nums=`seq 10`
 echo $nums				# 一行显示
@@ -35,9 +35,7 @@ echo '$nums'			# 加单引号, $失去变量的功能，只是普通的字符
 title=cto
 title+=ceo				# 追加字符串
 
-
 set 					# 显示所有变量
-
 
 注意事项：
 	name=linux				# 普通变量

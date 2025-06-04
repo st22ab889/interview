@@ -83,8 +83,14 @@ Autofs
 	/var/log/dnf.rpm.log
 	/var/log/dnf.log
 
-
-
+    /lib/modules/`uname -r`/kernel/fs           # 系统支持的文件系统
+    /etc/fstab                                  # 持久化挂载.是开机自动挂载的配置文件
+    /etc/mtab                                   # 是当前的分区挂载情况，记录的是当前系统已挂载的分区。
+    /proc/sys/vm/swappiness                     # swap的值决定了当内存占用达到一定的百分比时，会启用swap分区的空间
+    /proc/sys/vm/drop_caches                    # 手动释放内存缓存
+        echo 1 > /proc/sys/vm/drop_caches       # 写入1代表只释放page cache的可回收部分
+        echo 2 > /proc/sys/vm/drop_caches       # 写入2代表只释放slab cache中的可回收部分
+        echo 3 > /proc/sys/vm/drop_caches       # 写入3代表同时释放page 
 VNC:
     VNC 是在基于 UNIX 和 Linux 操作系统的免费的开源软件,远程控制能力强大,高效实用,其性能可以和 Windows 和 MAC 中的任何远程控制软件媲美。
     VNC 连接无界面系统时，可能只能看到命令行窗口，因为没有默认的桌面环境。如果需要运行图形界面程序，还需要安装相应的桌面环境，如 GNOME、KDE、XFCE 等，并进行相关配置。
@@ -123,3 +129,5 @@ PS4："set -x"显示脚本执行过程并将脚本内的变量的值暴露出来
     test.sh.5+ ls -l /etc/
     test.sh.5+ wc -l
     199	
+
+

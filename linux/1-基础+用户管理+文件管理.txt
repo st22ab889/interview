@@ -83,6 +83,8 @@ help 内部命令
 外部命令 --help
 man 		 	# 配合 whatis 命令使用
 
+watch -n 1 -d=cumulative free -h			# -n 1 表示 每隔一秒运行"free -h"， -d=cumulative 表示高亮显示变化情况
+
 =======================================================================文件管理==================================================================
 
 pwd
@@ -136,6 +138,32 @@ du -sh /etc	 /opt					# 查看文件夹大小
 
 ln -s ./data/test.txt ./123.txt		# 不加 -s 就是创建硬链接
 
+
+df						# 检查文件系统的磁盘空间占用情况(文件系统的大小、使用了多少、可用多少等信息)			
+	-H 以10为单位
+	-T 文件系统类型
+	-h human-readable
+	-i inodes instead of blocks
+	-P 以Posix兼容的格式输出
+
+
+du 									# 查看文件夹中的文件和文件大小
+	-h human-readable
+	-s summary
+	--max-depth=指定最大目录层级
+	-x, --one-file-system 			#忽略不在同一个文件系统的目录	
+
+dd if=/PATH/FROM/SRC of=/PATH/TO/DEST bs=# count=#			# convert and copy a file
+	if=file 												# 从所命名文件读取而不是从标准输入
+	of=file 												# 写到所命名的文件而不是到标准输出
+	bs=SizeBlockSize 										# 指定块大小（既是是ibs也是obs)
+	count=n 												# 复制n个bs
+	skip=blocks 											# 从开头忽略blocks个ibs大小的块
+	seek=blocks 											# 从开头忽略blocks个obs大小的块
+	conv=[lcase|ucase]										# lcase 大写转小写, ucase 小写转大写
+
+	dd if=tcpx.sh of=tcpx2.sh bs=1M count=1 conv=ucase		# 小写转大写示例
+
 ======================================================================IO、重定向=================================================================
 
 ll /dev/std*     					# in 对应 0, out 对应 1,  err 对应 2
@@ -155,7 +183,6 @@ echo `seq -s+ 100` | bc				# seq 10
 
 cat > f5.txt <<EOF					# 多行一次性重定向 EOF=end of file
 内容
-内容
 内容	
 EOF									# EOF 前后不能带任何内容
 
@@ -163,7 +190,7 @@ tr '12345' 'xyz'					# 替换. (tr用来转换和删除字符)
 tr 'a-z' 'A-Z'						# 小写转大写
 tr -d 'abc'							# 删 abc
 tr -s 'a'							# 相同连续的缩为一个
-	df | tr -s ' ' 
+df | tr -s ' ' 
 tr -d '\r' < win.txt > linux.txt	# 文本转换 
 
 
@@ -184,6 +211,9 @@ echo test | read X ; echo $X			# 没有打印出"test"的原因时，管道符"|
 echo test | { read X ; echo $X; }		# 加{}可以让命令在一个进程中运行, 加{}是最后一个命令要加";"号，而且要前后要留空格
 echo test | ( read X ; echo $X )     	# 加()可以让命令在一个进程中运行, 最后一个命不用加";"号，前后也可以不留空格
 
+>			# 标准输出重定向 
+&>			# 同时重定向 stdout 和 stderr
+2>&1		# stderr 重定向到 stdout
 
 ====================================================================用户、组、权限===============================================================
 
