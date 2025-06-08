@@ -1,0 +1,199 @@
+通过任务计划，可以让系统自动的按时间或周期性执行任务
+
+周期性运行某任务
+    cron
+
+未来的某时间点执行一次任务
+    at	    指定时间点，执行一次性任务
+    batch   系统自行选择空闲时间去执行此处指定的任务, batch 用的不多！
+
+
+cron 周期性任务计划 	
+    相关的程序包
+    	cronie：主程序包，提供crond守护进程及相关辅助工具
+		crontabs：包含CentOS提供系统维护任务
+		cronie-anacron：cronie的补充程序，用于监控cronie任务执行状况，如:cronie中的任务在过去该运行的时间点未能正常运行，则anacron会随后启动一次此任务
+
+    cron 依赖于crond服务，确保crond守护处于运行状态：
+        service crond status            # CentOS 6
+		systemctl status crond          # CentOS 7 以后版本
+
+	任务分类:
+		系统cron任务: 系统维护作业，/etc/crontab 主配置文件 , /etc/cron.d/ 子配置文件
+		用户cron任务: centos 保存在 /var/spool/cron/USERNAME , ubuntu系统存放在 /var/spool/cron/crontabs/USERNAME, 利用 crontab 命令管理	
+		
+	计划任务日志：/var/log/cron
+
+    注意事项:
+		计划任务中的所有脚本，不要出现类似-v的选项(-v 详细显示命令执行的操作),因为在计划任务中也看不到运行命令时的输出。反而还会产生大量的垃圾邮件！
+		事实上，应该把标准输出和标准错误隐藏掉，如 cp -v f2.sh /data/test &> /dev/null	
+
+    Options:
+	    -u <user>           # define user
+	    -e                  # edit user's crontab
+	    -l                  # list user's crontab
+	    -r                  # delete user's crontab
+	    -i                  # prompt before deleting
+	    -n <host>           # set host in cluster to run users' crontabs
+	    -c                  # get host in cluster to run users' crontabs
+	    -s                  # selinux context
+	    -x <mask>           # enable debugging 
+
+    rpm - q crontabs         # cron	是常见的服务，crontabs包系统默认自带
+    rpm -q cronie
+    rpm -ql cronie
+    man 5 crontab            # cron规则
+
+    etc/crontab                                 # /etc/crontab 格式说明和配置
+        SHELL=/bin/bash                         # 默认的SHELL类型    
+        PATH=/sbin:/bin:/usr/sbin:/usr/bin      # 默认的PATH变量值,可修改为其它路径
+        MAILTO=root                             # 默认标准输出和错误发邮件给root,可写其它用户,应把标准输出和标准错误隐藏,否则crontab会发大量的垃圾邮件
+
+        # For details see man 4 crontabs
+
+        # Example of job definition:
+        # .---------------- minute (0 - 59)
+        # |  .------------- hour (0 - 23)
+        # |  |  .---------- day of month (1 - 31)
+        # |  |  |  .------- month (1 - 12) OR jan,feb,mar,apr ...
+        # |  |  |  |  .---- day of week (0 - 6) (Sunday=0 or 7) OR sun,mon,tue,wed,thu,fri,sat
+        # |  |  |  |  |
+        # *  *  *  *  * user-name  command to be executed
+
+
+    Cron任务中PATH变量用于指定shell在执行命令时搜索可执行文件的路径.由于Cron任务运行在特殊环境中,其默认的PATH变量通常比用户登录环境更狭窄,因此需要显式设置以确保命令能被正确找到:
+        方式1(推荐): 在 crontab 文件中直接设置,  crontab -e 编辑的文件顶部添加 PATH 定义
+        方式2: 在脚本内部设置, 若不想全局设置，可在被执行的脚本中添加 PATH
+        方式3: 通过环境变量文件设置系统级 PATH, 影响所有 Cron 任务，以下两个文件任选一即可, 推荐 /etc/crontab
+            /etc/crontab
+            /etc/environment 
+        
+
+    系统cron计划任务:
+        vim /usr/local/bin/test.sh      # 脚本放在 PATH 环境变量指定的路径下
+        
+        crontab -e                      # vim自动打开一个临时的空白文件，在里面按格式添加或删除计划任务
+        * * * * * test.sh               # crontab -e 添加的定时任务保存在 /var/spool/cron/crontabs/, 在这个目录中,每个用户的定时任务都有一个以其用户名命名的文件
+
+        crontab -l                      # 列出计划任务
+        crontab -r                      # 删除所有corn任务
+
+    用户cron任务:
+         crontab -u xiaoqiang -e        # -u 指定用户, 要看用户有没有权限运行这个命令, 涉及到操作文件或目录，也要看用户是否有权限  
+
+
+    crond任务相关文件:
+        cat /etc/ | grep cron      # 查看系统中自身带有的计划任务, 放到这些目录下就由系统决定具体什么时间运行,相当于系统调用,建议通过"crontab -e"的方式创建计划任务,时间可以自己定
+        -rw-------.  1 root root      541 Aug  9  2019 anacrontab
+        drwxr-xr-x.  2 root root       36 Nov 16 17:33 cron.d				# 这个目录下面放的也是计划任务
+        drwxr-xr-x.  2 root root       42 Aug 20  2021 cron.daily			# shell脚本或可执行文件 放到这个目录下，会每天运行一次
+        -rw-------.  1 root root        0 Aug  9  2019 cron.deny
+        drwxr-xr-x.  2 root root       22 Jun 10  2014 cron.hourly			# shell脚本或可执行文件 放到这个目录下，会每小时运行一次
+        drwxr-xr-x.  2 root root        6 Jun 10  2014 cron.monthly			# shell脚本或可执行文件 放到这个目录下，会每月运行一次
+        -rw-r--r--.  1 root root      451 Jun 10  2014 crontab
+        drwxr-xr-x.  2 root root        6 Jun 10  2014 cron.weekly			# shell脚本或可执行文件 放到这个目录下，会每周运行一次
+            注意：
+        
+        "/etc/crontab" 文件：
+            也可以把计划任务放到系统配置文件"/etc/crontab", 但是这个文件属于系统文件，文件权限是root，普通用户也不能改这个文件，建议还是使用"crontab -e"的方式创建计划任务
+        
+        cat /etc/cron.d/0hourly
+        # Run the hourly jobs
+        SHELL=/bin/bash
+        PATH=/sbin:/bin:/usr/sbin:/usr/bin
+        MAILTO=root
+        01 * * * * root run-parts /etc/cron.hourly	  #"01 * * * * root"表示每小时的01分以root身份运行，"run-parts"实际上是一个脚本，功能就是后面跟一个文件夹,会把文件夹里面的所有内容自定运行！
+            
+        ll /etc/cron.daily/
+        total 8
+        -rwx------. 1 root root 219 Apr  1  2020 logrotate				    # 自动清理日志，每天运行的清理任务，这是系统自带计划任务。
+        -rwxr-xr-x. 1 root root 618 Oct 30  2018 man-db.cron
+
+    ubuntu 使用"crontab -e"会询问使用什么工具编辑计划任务, 可以在"/etc/profile.d/env.sh"文件中指定默认默认工具, 添加  export EDITOR=vim	即可
+
+    echo 打印的消息会发送邮件; wall 广播不属于标准输出，也不属于标准错误, 所以可以在屏幕上打印出来.
+
+    其它问题：	
+	    0 */3 * * * wang /bin/echo “howdy”; wall “welcome to Magedu!”       # 要运行多个任务，就用分号隔开
+		
+        30 2 * * * /bin/cp -a /etc/ /data/etc`date +\%F_\%T`    # cron任务中%表示换行,且第一个%后的所有字符串会被将成当作命令的标准输入.命令中的%需用 \ 转义,另外不支持将%放于单引号中
+        30 2 * * * /bin/cp -a /etc/ /data/etc`date +'%F_%T'` 	# 错误写法, 如果计划任务的命令有复杂写法，建议把要运行的命令写在shell脚本中，避免出现问题！
+		
+		for min in 0 1 2; do echo "hi"; sleep 20; done          # 计划任务只能精确到分钟单位，如果要达到秒级别，可以在shell脚本中使用sleep实现
+
+
+管理临时文件，比如系统产生的日志文件或其它临时文件
+	CentOS 6 使用 /etc/cron.daily/tmpwatch 定时清除临时文件
+    CentOS 7 使用 systemd-tmpfiles-setup 服务实现，这个服务会自动清理垃圾文件
+
+    管理临时文件用到的配置文件：
+		/etc/tmpfiles.d/*.conf
+		/run/tmpfiles.d/*.conf
+		/usr/lib/tmpfiles/*.conf
+
+    cat /usr/lib/tmpfiles.d/tmp.conf
+    v /tmp 1777 root root 10d						# 每隔10天清理"/tmp"目录下产生的临时文件
+    v /var/tmp 1777 root root 30d					# 每隔30天清理"/var/tmp"目录下产生的临时文件
+    # Exclude namespace mountpoints created with PrivateTmp=yes
+    x /tmp/systemd-private-%b-*
+    X /tmp/systemd-private-%b-*/tmp
+    x /var/tmp/systemd-private-%b-*
+    X /var/tmp/systemd-private-%b-*/tmp
+
+    注意事项:
+		"/tmp"或"/var/tmp"目录是程序运行的时候生成的临时文件，systemd-tmpfiles-setup 服务会自动清理这些临时文件！
+		生产中的服务产生的大量日志文件如果没有在"/tmp"或"/var/tmp"目录下，将不会自动清理。如果放在其它目录，要按时清理 ！ 
+		不管日志放在哪个目录都需要监控磁盘空间的使用，发现磁盘空间满了就要及时删除！
+
+
+(了解)一次性任务, 
+    at [option] TIME
+        由包 at 提供，依赖于atd服务,需要启动才能实现at任务.
+        at 队列 centos 存放在 /var/spool/at 目录, ubuntu存放在 /var/spool/cron/atjobs 目录, 当计划任务运行完成后会被删除，因为这个计划任务是一次性的。
+        执行任务时PATH变量的值和当前定义任务的用户身份一致
+        作业执行命令的结果中的标准输出和错误以执行任务的用户身份发邮件通知给 root, 默认CentOS 8 最小化安装没有安装邮件服务,需要自行安装
+    
+    选项
+		-V              # 显示版本信息
+		-t time         # 时间格式 [[CC]YY]MMDDhhmm[.ss]
+		-l              # 列出指定队列中等待运行的作业；相当于atq
+		-d N            # 删除指定的N号作业；相当于atrm
+		-c N            # 查看具体作业N号任务
+		-f file         # 指定的文件中读取任务
+		-m              # 当任务被完成之后，将给用户发送邮件，即使没有标准输出
+
+    TIME：定义出什么时候进行 at 这项任务的时间
+        HH:MM [YYYY-mm-dd]
+        noon, midnight, teatime（4pm）,tomorrow
+        now+#{minutes,hours,days, OR weeks}			
+    
+    at 任务执行方式：
+		交互式
+        非交互式
+            echo "wall class is over" | at 18:00
+		输入重定向
+		at -f file
+
+ 	/etc/at.{allow,deny} 控制用户是否能执行at任务
+		白名单：/etc/at.allow 默认不存在，只有该文件中的用户才能执行at命令
+		黑名单：/etc/at.deny 默认存在，拒绝该文件中用户执行at命令，而没有在at.deny 文件中的使用者则可执行
+        如果两个文件都不存在，只有 root 可以执行 at 命令, "/etc/at.allow"的优先级大于"/etc/at.deny" 
+
+    at 18:05                                    # 如果写为"at now+1min"这种形式,这个1分钟不是整整1分钟,at是以分钟为单位,也就是整分钟的0秒运行
+	at> echo at jos is running
+	at> touch /data/at.log
+	at> <EOT>									# 注意: 输入完成后，按"Ctrl + D"退出，"Ctrl + D"是正在退出
+	job 1 at Thu Nov 17 18:05:00 2022
+
+    rpm -ql at | grep at        # 依赖于atd服务
+    at -l                       # 查看已定义的计划任务
+    at -d $编号                  # 根据计划任务编号删除计划任务
+    at -c $编号                  # 查看计划任务详情,打印出来的内容前面都是系统变量
+
+
+(了解)anacron，基本用不上
+    系统中有一些周期性的计划任务，比如"/etc/cron.daily/"下就是每天要运行的任务，这种周期性任务是系统来决定什么时候运行，通常都是半夜(凌晨2或3点)运行！
+    如果是家用电脑天天都关机，计划任务就永远没有时间运行.系统中的"anacron"服务作用是在电脑开机的时候把关机后没有运行的计划任务运行一遍. 服务器无需关机,所以不存在这个问题 
+
+
+(了解) windows也有任务计划管理，打开"计算机管理"就能看到

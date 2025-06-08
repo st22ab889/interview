@@ -1,0 +1,523 @@
+==================================================================Linux的内核参数===============================================================
+linux的组成：
+	linux内核(内核)：实现进程管理、内存管理、网络管理、驱动程序、文件系统、安全功能等功能
+	根文件系统(rootfs)：包括程序(二进制执行文件)和 glibc 库(函数集合, function, 调用接口（头文件负责描述）
+
+内核分类:
+    宏内核(monolithic kernel)又称单内核和强内核: Unix，Linux把所有系统服务都放到内核里，所有功能集成于同一个程序, Linux其实在单内核内核实现了模块化,相当于吸收了微内核的优点
+    微内核(micro kernel)：Windows，Solaris，HarmonyOS.简化内核功能,在内核之外的用户态尽可能多地实现系统服务,每种功能使用一个单独子系统实现，将内核功能移到用户空间，性能差
+
+内核参数：
+    只读：只用于输出信息
+    可写：可接受用户指定“新值”来实现对内核某功能或特性的配置
+
+/proc 目录
+    "/proc" 目录存放的是进程相关信息，包括内核状态。这实际上是一个虚拟文件见，它对应的是内存中的状态
+	"/proc" 目录内容虽然很多，但大小为0，因为都不是硬盘上的文件，里面的东西都在内存中，所以这里面的设置可以影响系统的运行
+    
+    man proc   # 帮助
+    sysctl -w vm.swappiness=60     # sysctl 修改系统参数并立即生效,适合临时修改. 修改 /etc/sysctl.conf 配置文件可以永久生效	      
+
+    可通过观察"/proc/sys"来控制内核中的各种设置, "/proc/sys"目录下很多信息可以被修改.  
+
+    直接改/proc下的文件，相当于直接改内存，不能永久保存。要想永久保存，可以把设置存到下面文件中：
+		/run/sysctl.d/*.conf
+		/etc/sysctl.d/*.conf
+		/usr/local/lib/sysctl.d/*.conf
+		/usr/lib/sysctl.d/*.conf
+		/lib/sysctl.d/*.conf
+		/etc/sysctl.conf							# 列出的文件都可以。但一般都是改这个文件，其它文件不用动 
+
+    示例: 开启 ip_forward 
+        vim /etc/sysctl.conf
+		net.ipv4.ip_forward=1                       # "."就相当于路径分隔符"/",路径从net开始,"/etc/sysctl.conf"对应的就是"/proc/sys/"这个文件夹
+        net.ipv4.icmp_echo_ignore_all=1		        # 禁ping
+        net.ipv6.conf.all.disable_ipv6 = 1          # 禁IPv6 
+	    net.ipv6.conf.default.disable_ipv6 = 1      # 禁IPv6 
+
+        sysctl -p	                        # 使设置生效
+        sysctl -a                           # 查看所有生效参数, 这种方法centos7、8都支持，centos7、8的"/etc/sysctl.conf"默认无任何配置
+
+/sys 目录 
+    "/sys"目录和硬件相关，里面是一些硬件信息，由内核管理，一般不用管.
+    "/sys"目录使用sysfs文件系统，为用户使用的伪文件系统，输出内核识别出的各硬件设备的相关属性信息，也有内核对硬件特性的设定信息；有些参数可以修改，用于调整硬件工作特性
+        sysfs 文件系统是 Linux 众多文件系统中的一个
+        sysfs 文件系统是 Linux 2.6 内核的一个新特性，它是一个只存在于内存中的文件系统。内核通过这个文件系统将信息导出到用户空间中。
+
+    du -sh /sys/        # "/sys/" 是一个虚拟文件夹，不是真正的文件夹，对应的也是内存中的一些数据
+    alias scandisk='echo - - - > /sys/class/scsi_host/host0/scan;echo - - - > /sys/class/scsi_host/host1/scan;echo - - - > /sys/class/scsi_host/host2/scan'   # 新硬盘识别别名
+
+
+(重要)常用的内核参数
+	net.ipv4.ip_forward
+	net.ipv4.icmp_echo_ignore_all		# 禁ping
+	net.ipv4.ip_nonlocal_bind 			# 允许应用程序可以监听本地不存在的IP
+	vm.drop_caches						# 释放缓存
+	fs.file-max = 1020000 				# 全局打开文件的最大数,默认只能打开 178079 个文件，一些生产服务器打开的文件会非常多,这个需值调大
+	vm.overcommit_memory = 0			# 防止超分内存，比如只有8G内存，非要分10G内存出去
+	vm.swappiness = 0					# 设为10表示内存剩余10%时允许使用swap,要尽可能小或关闭,如果还剩很多物理内存空间,数据就往硬盘放会导致速度变量.设为0表示没有物理内存方可使用swap
+
+======================================================================内核编译==================================================================
+
+(了解)内核编译, 有些功能只有新内核才支持，为了实现特定的新功能才会编译内核.实际工作中很少会自己编译内核！
+
+Linux是单内核体系设计、但充分借鉴了微内核设计体系的优点，为内核引入模块化机制 !
+	
+Linux内核组成部分：
+    kernel：内核核心，一般为bzImage，通常在/boot目录 vmlinuz-VERSION-RELEASE  
+    kernel object：内核对象，一般放置于  /lib/modules/VERSION-RELEASE/
+    辅助文件：ramdisk
+        initrd-VERSION-RELEASE.img：从CentOS 5 版本以前
+        initramfs-VERSION-RELEASE.img：从CentOS6 版本以后
+	
+内核版本：
+    在运行中的内核使用 uname 命令打印系统信息
+    格式：uname [OPTION]...
+    常用选项：
+        -n 显示节点名称
+        -r 显示VERSION-RELEASE
+        -a 显示所有信息
+	
+内核模块命令：
+    lsmod 命令：
+        显示由核心已经装载的内核模块
+        显示的内容来自于: /proc/modules 文件
+		
+    modinfo命令：
+        功能：管理内核模块
+        配置文件：/etc/modprobe.conf, /etc/modprobe.d/*.conf
+        
+        显示模块的详细描述信息
+            modinfo [ -k kernel ] [ modulename|filename... ]
+            常用选项：
+                -n：只显示模块文件路径
+                -p：显示模块参数
+                -a：作者
+                -d：描述
+					
+    modprobe命令：装载或卸载内核模块
+        modprobe [ -C config-file ] [ modulename ] [ module parame-ters... ]
+        modprobe [ -r ] modulename…
+        
+    depmod命令：内核模块依赖关系文件及系统信息映射文件的生成工具
+    
+    insmod命令：可以安装模块，需要指定模块文件路径，并且不自动解决依赖模块
+        insmod [ filename ] [ module options... ]
+        
+    rmmod命令：卸载模块
+        rmmod [ modulename ]
+
+交叉编译: 编译的目标平台与当前平台不相同，使用ARCH参数指定CPU架构
+	make ARCH=arch_name
+	make ARCH=$rch_name help        # 获取特定目标平台的使用帮助, 比如 make ARCH=arm help
+			
+=================================================================CentOS6系统启动流程=============================================================
+
+硬件启动POST(Power-On-Self-Test，加电自检):是BIOS功能的一个主要部分.负责完成对CPU、主板、内存、硬盘子系统、显示子系统、串并行接口、键盘等硬件情况的检测
+
+启动加载器 bootloader: 引导加载器，引导程序
+    Windows: ntloader，仅是启动OS
+    Linux:
+        LILO(LInux LOader)：早期的bootloader，功能单一
+        GRUB(GRand Unified Bootloader)分为两个阶段,第一阶段它保存在MBR中。用汇编语言编写，也就是MBR中的引导程序部分; GRUB引导程序的第二阶段，通常用C语音编写
+
+    df
+	/dev/mapper/centos-root  36805060 3070300  33734760   9% /					# 操作系统的根
+	/dev/sda1                 1038336  188008    850328  19% /boot				# GRUB的根
+
+Linux启动流程(基于Centos6分析):
+    1.grub 的第1、2阶段加载完成后，就开始加载内核，操作系统内核文件和根文件系统在"/boot/grub/grub.conf"中指定.
+    2.进入到根系统后，首先加载系统第一个进程(init)进程
+    3.init进程启动之后，会根据一个初始化文件"/etc/inittab"做初始化，这个文件定义了系统启动后的运行模式
+    4.继续初始化"/etc/init/rcS.conf", 初始化关键的一项是调用"/etc/rc.d/rc/sysinit"脚本,这个脚本实现以下功能:
+        (1) 设置主机名
+        (2) 设置欢迎信息
+        (3) 激活udev和selinux
+        (4) 挂载/etc/fstab文件中定义的文件系统
+        (5) 检测根文件系统，并以读写方式重新挂载根文件系统
+        (6) 设置系统时钟
+        (7) 激活swap设备
+        (8) 根据/etc/sysctl.conf文件设置内核参数
+        (9) 激活lvm及software raid设备
+        (10)加载额外设备的驱动程序
+        (11)清理操作
+    5."/etc/rc.d/rc/sysinit"脚本初始化后，开始初始化"/etc/init/rc.conf"脚本, 关键代码如下：
+        exec /etc/rc.d/rc $RUNLEVEL              # $RUNLEVEL 引用的就是"/etc/inittab"文件中定义的级别
+    6.运行"/etc/rc.d/rc"脚本, 关键代码如下：
+        [ -d /etc/rc$runlevel.d ] || exit 0		  # 如果运行模式是3，就会运行"etc/rc3.d" 目录下的脚本		   
+    7."/etc/rc3.d"其实是个软衔接, 指向了本目录的"/etc/rc.d/rc3.d"
+        ls /etc/rc3.d -dl
+		lrwxrwxrwx.  1 root root  10 Aug 20  2021 /etc/rc3.d -> rc.d/rc3.d  
+    8. "/etc/rc.d/rc3.d"下面的软衔接指向了 "/etc/rc.d/init.d/"目录下的具体文件,软连接名称分别有K和S开头,表示启动的时候停止K开头的服务,启动S开头的服务,此逻辑在"/etc/rc.d/rc"脚本中
+        ls /etc/rc.d/rc3.d -l
+        lrwxrwxrwx. 1 root root 20 Jul 21  2023 K50netconsole -> ../init.d/netconsole
+        lrwxrwxrwx. 1 root root 17 Jul 21  2023 S10network -> ../init.d/network
+
+    9. "/etc/rc.d/init.d/"目录下的具体文件是一个可运行的脚本
+        head -n3 /etc/rc.d/init.d/network
+        #! /bin/bash
+        #
+        # network       Bring up/down networking
+
+核心目录
+    /etc/rc.d/init.d/ , 存放传统的 SysVinit 服务脚本（如 httpd、network 等），这些脚本可通过 service 命令直接调用。
+    /etc/rc.d/rc[0-6].d/, 存放指向 init.d/ 中脚本的符号链接，用于定义不同运行级别（Runlevel）下需要启动或停止的服务。
+
+    在 CentOS 7 中，systemd 会通过兼容机制间接调用  /etc/rc.d/ 目录以及子目录下的脚本
+        1. 通过 systemd 的兼容服务(sysvinit.target)调用, systemd 的目标(Target)机制替代了传统的运行级别。传统运行级别与 systemd 目标的对应关系如下：
+            运行级别	对应的systemd目标	            说明
+                0	    poweroff.target	               关机
+                1	    rescue.target	               单用户模式
+                2-5	    multi-user.target(默认)	       多用户模式（级别 3）
+                6	    reboot.target	               重启
+            sysvinit.target 是 systemd 为兼容 SysVinit 脚本创建的虚拟目标，它会读取 /etc/rc.d/rc[0-6].d/ 中的符号链接，并按顺序执行对应的 init.d 脚本。
+            例如：当系统切换到运行级别 3 时，systemd 会激活 multi-user.target，该目标会通过 sysvinit.target 间接触发 /etc/rc.d/rc3.d/ 下以 S 开头的脚本执行。
+        2.通过 service 或 chkconfig 命令直接调用，service 命令本质上是 /etc/init.d/ 脚本的封装工具，可直接调用 init.d 中的脚本
+          chkconfig 命令用于管理 init.d 脚本在不同运行级别的启用状态，会修改 /etc/rc.d/rc[0-6].d/ 中的符号链接.
+
+    systemd 与 SysVinit 脚本的兼容原理
+        1.systemd 自动生成兼容服务单元
+            当系统检测到 /etc/init.d/ 中的脚本时，systemd 会自动为每个脚本创建一个对应的 兼容服务单元（如 httpd.service），该单元通过 ExecStart 字段调用脚本的 start 动作，ExecStop 调用 stop 动作。
+        2.运行级别切换的本质
+            在 CentOS 7 中，切换运行级别（如 systemctl set-default multi-user.target）实际上是激活对应的 systemd 目标，而目标内部会通过 sysvinit.target 兼容层执行传统的 SysVinit 脚本。
+    
+     总结
+        直接调用者：sysvinit.target 或 service/chkconfig 命令。
+        间接驱动者：systemd 通过目标机制触发兼容层执行 /etc/rc.d/ 下的脚本，以兼容旧系统的服务管理方式。
+        趋势：现代 Linux 系统（如 CentOS 8+）已逐步淘汰 SysVinit，完全转向 systemd，但 CentOS 7 仍保留了这一兼容机制。
+
+==================================================================CentOS6服务管理===============================================================
+
+ (了解)CentOS6服务管理:
+        ls -dl /etc/init.d          # "/etc/rc.d/init.d/" 有个软衔接是 "/etc/init.d"
+        lrwxrwxrwx. 1 root root 11 Jul 21  2023 /etc/init.d -> rc.d/init.d
+
+        service 命令只是临时启动或关闭服务, 开机是启动还是关闭和模式有关，也就是在对应的目录下看指向服务脚本的软连接是以S开头还是K开头.
+            service httpd [status|stop|start]			# 等价于 /etc/init.d/httpd [status|stop|start]
+		
+        chkconfig 命令可以用来设置当前系统中的各种服务是否开机启动, 不推荐手动改软衔接
+            chkconfig --list                    # 列出所有的服务在各个模式下是否是开机启动。on代表开机启动, off 代表关闭  
+            chkconfig --level 3 netconsole on   # 将 netconsole 服务在3模式下设为开机启动
+
+        使用chkconfigs的条件是,在"/etc/init.d/"目录下有相应的启动脚本，以及启动脚本的软连接在系统运行模式对应的文件夹(/etc/rc.d/rc[0到6].d)中
+        使用service的条件是在"/etc/init.d/"目录下有相应的启动脚本
+
+        自定义服务脚本:
+            cat /etc/init.d/testsr
+            chmod +x /etc/init.d/testsrv
+            chkconfig --add testsrv             # 加到服务列表,同时会自动生成 rc0.d 到 rc6.d 这7个目录下的软连接，并且这些软连接指向"/etc/init.d/testsrv"
+            chkconfig testsrv on                # 如果不指定模式，默认会把2、3、4、5模式变为on,也就是设置为开机启动   
+            chkconfig --list testsrv 
+            reboot                              # 在系统启动过程中可以看到如下打印"Starting testsrv		 [ ok ]",  这个 ok 是个绿色的字体             
+
+(了解)非独立服务,centos7已经取消
+	系统中有些服务用的很少，如果简单地设置为服务，开机会自动启动，这样会占用资源。但是不启动，偶尔又需要用。像这样的服务在centos6上会设置为非独立服务！
+	非独立服务会找一个总代理服务 xinetd，这个服务监控那些用的很少的服务,这些服务在用户访问的时候由xinetd激活。如果用户不访问就停止服务,这样就实现了不开机启动也能随时访问！
+	非独立服务依赖于 xinetd 服务，所以这个服务也被称为"超级守护"进程！
+
+=================================================================CentOS7系统启动流程=============================================================
+
+ CentOS 7及之后版本引导顺序
+	1. UEFi或BIOS初始化，运行POST开机自检
+	2. 选择启动设备
+	3. 引导装载程序, centos7是grub2,加载装载程序的配置文件：
+		/etc/grub.d/
+		/etc/default/grub
+		/boot/grub2/grub.cfg		# 这个配置文件有很多内容，不用手动修复，可以使用命令 grub2-mkconfig > /boot/grub2/grub.cfg  或  grub2-mkconfig -o
+	4. 加载initramfs驱动模块
+	5. 加载内核选项
+	6. 内核初始化，centos7使用systemd代替init
+	7. 执行initrd.target所有单元，包括挂载/etc/fstab
+	8. 从initramfs根文件系统切换到磁盘根目录
+	9. systemd执行默认target配置，配置文件/etc/systemd/system/default.target
+	10. systemd执行sysinit.target初始化系统及basic.target准备操作系统
+	11. systemd启动multi-user.target下的本机与服务器服务
+	12. systemd执行multi-user.target下的/etc/rc.d/rc.local
+	13. Systemd执行multi-user.target下的getty.target及登录服务
+	14. systemd执行graphical需要的服务
+
+
+	systemd-analyze blame                # 通过systemd-analyze 工具可以了解启动的详细过程。并且可以看到每个service花了多少时间
+    6.136s NetworkManager-wait-online.service
+    2.051s kdump.service
+    1.164s lvm2-monitor.service
+    1.155s tuned.service	
+    ......省略
+			  
+	systemd-analyze plot > boot.html     #  启动次序可以用以下命令，这个命令会生成一个网页，需要在浏览器中打开
+	
+
+范例:分析"/boot/grub2/grub.cfg"脚本	
+	cat /boot/grub2/grub.cfg		    # centos7在"/boot/grub2/grub.cfg"脚本中定义了linux内核。centos8在这个脚本中没有直接定义，是在这个脚本中调用了其它脚本文件生成。							
+	......省略
+    # net.ifnames=0 这个内核参数告诉内核生成网卡的名称以"eth"开头
+    linux16 /vmlinuz-0-rescue-1ac11172d2f343c09c155ddd71b49e48 root=/dev/mapper/centos-root ro crashkernel=auto rd.lvm.lv=centos/root rd.lvm.lv=centos/swap rhgb quiet net.ifnames=0 
+    initrd16 /initramfs-0-rescue-1ac11172d2f343c09c155ddd71b49e48.img
+	......省略
+
+==================================================================CentOS7服务管理===============================================================
+
+CentOS7 服务管理：
+    下面几种方式都是临时启动:
+        ./httpd
+        service httpd start
+        systemctl start httpd.service       # systemctl 是 centos7.x 的新指令, 用来替换 service 和 chkconfig, 融合 service 和 chkconfig 的功能于一体.    
+
+    systemd
+        从 CentOS 7 版本之后开始用 systemd 实现init进程，系统启动和服务器守护进程管理器，负责在系统启动或运行时，激活系统资源，服务器进程和其它进程
+        系统引导时实现服务并行启动, CentOS7 启动比 CentOS6 快，是因为 CentOS7 支持并行启动。
+        自动化的服务依赖关系管理。比如访问一个服务，Systemd再激活这个服务，类似于 centos6 中的 xinetd 服务
+        在centos7中，服务和socket分离，可以各自启动！在centos6中，如果一个服务用到了socket，那么这个服务和socket是一体的，服务开启，socket打开；服务关闭，socket也关闭
+	
+
+    unit: 是 systemd 的核心概念, unit表示不同类型的systemd对象，通过配置文件进行标识和配置;文件中主要包含了系统服务、监听socket、保存的系统快照以及其它与init相关的信息
+        systemctl -t help           # 查看unit类型，service、socket、socket这三种类型用的最多
+        Available unit types:
+        service                     # 文件扩展名为.service, 用于定义系统服务.service类似于centos6上面的服务. 用于定义系统服务
+        socket                      # 文件扩展名为.socket, 定义进程间通信用的socket文件，也可在系统启动时延迟启动服务，实现按需启动
+        busname
+        target                      # 文件扩展名为.target，用于模拟实现运行级别，实际上就是centos6中的runlevel
+        snapshot                    # 文件扩展名为.snapshot, 管理系统快照     
+        device                      # 文件扩展名为.device, 用于定义内核识别的设备
+        mount                       # 文件扩展名为.mount, 定义文件系统挂载点
+        automount                   # 文件扩展名为.automount，文件系统的自动挂载点
+        swap                        # 文件扩展名为.swap, 用于标识swap设备
+        timer
+        path                        # 文件扩展名为.path，用于定义文件系统中的一个文件或目录使用,常用于当文件系统变化时，延迟激活服务，如：spool 目录
+        slice
+        scope
+
+    unit的配置文件：
+		/usr/lib/systemd/system # 每个服务最主要的启动脚本设置，类似于之前的/etc/init.d/。这些脚本的后缀以Unit类型结尾，比如 xxx.server、yyy.socket 等
+		/lib/systemd/system		# ubutun的对应目录
+		/run/systemd/system 	# 系统执行过程中所产生的服务脚本，比上面目录优先运行
+		/etc/systemd/system 	# 管理员建立的执行脚本，类似于/etc/rc${runlevel}.d/S${ServerName}的功能，比上面目录优先运行
+
+    systemctl
+        格式:
+            systemctl COMMAND name.service          # 后缀可省略, 可接多个name
+
+        systemctl start name.service			    # 启动服务,临时生效,重启失效.相当于 service name start
+        systemctl stop name.service				    # 停止服务,临时生效.相当于 service name start
+        systemctl restart name.service              # 相当于service name restart
+        systemctl reload name                       # 请求服务重新加载配置(不重启), 需服务支持 reload 功能  
+        systemctl status name.service               # 相当于service name status
+        systemctl mask name.service					# 禁止(自动和手动)启动服务，有些服务上面的功能和某些服务冲突，就需要禁止这个服务启动。centos6没有这样的功能
+        systemctl unmask name.service               # 取消禁止
+        systemctl is-active name.service            # 查看某服务当前激活与否的状态
+        systemctl list-units --type|-t service      # 查看所有已经激活的服务：
+        systemctl list-units --type service --all	# 查看所有服务  --all 也可以缩写为 -a
+        systemctl list-units --type service -a
+        systemctl enable name.service				# 永久生效, 设定某服务开机自启，相当于 chkconfig name on
+        systemctl disable name.service				# 永久生效, 设定某服务开机禁止启动：相当于chkconfig name off
+        systemctl list-unit-files --type service    # 查看所有服务的开机自启状态，相当于 chkconfig --list
+        ls /etc/systemd/system/*.wants/name.service         # 用来列出该服务在哪些运行级别下启用和禁用：chkconfig –list name
+        systemctl is-enabled name.service           # 查看服务是否开机自启
+        systemctl --failed --type=service           # 列出失败的服务
+        systemctl enable --now postfix              # 开机并立即启动或停止
+        systemctl disable --now postfix             # 开机并立即停止
+        systemctl list-dependencies name.service            # 查看服务的依赖关系：
+        systemctl kill unitname	                            # 杀掉进程
+        systemctl list-unit-files --type service --all      # 显示服务状态, 状态解析如下:
+            loaded 					    # Unit配置文件已处理
+            active(running) 		    # 一次或多次持续处理的运行
+            active(exited)			    # 成功完成一次性的配置
+            active(waiting) 		    # 运行中，等待一个事件
+            inactive 				    # 不运行
+            enabled 				    # 开机启动
+            disabled 				    # 开机不启动
+            static 					    # 开机不启动，但可被另一个启用的服务激活
+            indirect 				    # 重定向到别处
+        systemctl reload-daemon  		# 作用于Systemd管理器本身.用来重新加载所有单元文件(如 .service、.timer)使配置变更生效. 比如修改了服务的单元文件(如启动参数、依赖关系)或新增/删除了单元文件
+
+
+    示例：centos7安装nginx
+        yum -y install nginx;rpm -ql nginx
+	    /usr/lib/systemd/system/nginx.service		    # 安装的时候自动生成"nginx.service"，ngingx.server就相当于centos6上面的服务脚本
+
+        service nginx restart                                           #  entos7、8 版本兼容 sevice 以及 chkconfig 命令       
+        Redirecting to /bin/systemctl restart nginx.service		        #  centos7 使用 service 实际上是被重定向到了 systemctl	
+        Failed to restart nginx.service: The name org.freedesktop.PolicyKit1 was not provided by any .service files     # 出现这个错误说明不是使用root权限运行此命令
+        See system logs and 'systemctl status nginx.service' for details.
+
+        systemctl status nginx
+	    Loaded: loaded (/usr/lib/systemd/system/nginx.service; disabled; vendor preset: disabled) 	# 中间的 disabled 说明开机不启动, vendor preset 表示服务的默认启动状态
+        
+        systemctl enable --now nginx.service            # 设置为开机启动以及立即启动
+
+
+    示例：ubuntu安装nginx
+        apt install nginx	
+        dpkg -L nginx					# 如果没有"nginx.service"这个文件，是因为依赖关系，装了一些其他包，这个文件在其它包中
+        dpkg -L nginx-common			# 可以看到nginx.service"这个文件在common包中
+        systemctl status nginx		    # 可以看到，装上后自动启动服务,并设置为开机启动            
+        pstree -p                       # 可以看出在centos和Ubuntu上普遍采用了systemd
+
+    示例：centos8 安装 rpcbind
+        yum -y install rpcbind
+        systemctl status rpcbind.socket rpcbind.service     # 安装成功后，发现 socket 自动打开并设为开机启动，service没有开启也没有设为开机启动。问题：服务都没有打开？谁在监听端口
+        ss -ntlp                            # 发现 systemd 在监听这个端口，这个机制和centos6的xinetd(超级守护进程)很像。服务不用立即启动，如果有人访问systemd自动激活服务,节约了资源
+        telnet 192.168.32.100 111           # 在另一个主机的终端访问 rpcbind
+        systemctl status rpcbind.service    # 再次观察，可以看到service启动了
+
+
+    service unit 文件放置目录说明：
+        /etc/systemd/system       # 系统管理员和用户放置service unit文件的目录。特点:用户自定义配置,由系统管理员创建和管理;优先级高于 /usr/lib/;系统升级时不会被覆盖。
+        /usr/lib/systemd/system   # 发行版打包者放置service unit文件的目录。特点:系统默认配置,由软件包管理器（如 yum、dnf）自动安装和管理; 系统升级时可能被覆盖;不建议直接修改;
+        
+        /lib/systemd/system		# ubutun的对应的系统管理员和用户放置service unit文件的目录. CentOS中"/lib"目录是个软衔接,指向"/usr/lib"
+		/etc/systemd/system 	# ubutun的对应发行版打包者放置service unit文件的目录
+
+
+        man 5 systemd.unit
+            
+        unit 格式说明：
+            以 “#” 开头的行后面的内容会被认为是注释
+            相关布尔值，1、yes、on、true 都是开启，0、no、off、false 都是关闭
+            时间单位默认是秒，所以要用毫秒（ms）分钟（m）等须显式说明	
+            
+        service unit file文件通常由三部分组成：
+            [Unit]：定义与Unit类型无关的通用选项；用于提供unit的描述信息、unit行为及依赖关系等
+            [Service]：与特定类型相关的专用选项；此处为Service类型
+            [Install]：定义由“systemctl enable”以及"systemctl disable“命令在实现服务启用或禁用时用到的一些选项。Unit和Install是通用部分，不管是service还是socket都有这两部分
+        
+        Unit段的常用选项：
+            Description：描述信息
+            After：定义unit的启动次序，表示当前unit应该晚于哪些unit启动，其功能与Before相反
+            Requires：依赖到的其它units，强依赖，被依赖的units无法激活时，当前unit也无法激活
+            Wants：依赖到的其它units，弱依赖
+            Conflicts：定义units间的冲突关系	
+            RequiresMountFor：挂载
+            
+        Service段的常用选项：
+            Type：决定了 systemd 如何启动服务、如何判断服务是否启动成功，以及服务的生命周期管理方式
+                simple：默认simple, 服务启动后立即进入运行状态(如 Python 脚本、Node.js 应用)
+                forking：服务通过 fork() 派生子进程，父进程退出，子进程继续运行。需配合 PIDFile= 指定子进程的 PID 文件，让 systemd 追踪真正的服务进程。适用传统的守护进程（如 Apache、Nginx）
+                oneshot：一次性任务，执行完毕后即退出。适用脚本、初始化任务(如挂载文件系统、配置网络)。
+                        systemd 会等待服务命令执行完毕，并根据 RemainAfterExit= 决定服务状态：
+                            RemainAfterExit=no（默认）：任务完成后，服务状态变为 inactive。
+                            RemainAfterExit=yes：任务完成后，服务状态仍保持 active (常用于准备工作)。
+                dbus：服务启动后会注册到 D-Bus 消息总线，systemd 等待注册完成后才认为启动成功。需通过 BusName= 指定 D-Bus 名称，让 systemd 监听注册事件。适用基于 D-Bus 通信的服务(如桌面环境组件、系统服务)
+                notify：服务启动后通过 sd_notify() 函数通知 systemd 启动完成。服务代码需主动调用 sd_notify("READY=1") 通知 systemd。适用复杂服务(如容器、虚拟机)，需要自定义启动完成的判断逻辑。
+                idle：延迟执行服务，直到所有其他任务处理完毕（系统空闲时）。服务的 ExecStart 命令会被延迟执行，不影响其他服务启动。适用非紧急服务(如日志清理、定期维护)
+            EnvironmentFile：环境配置文件
+            ExecStart：指明启动unit要运行命令或脚本的绝对路径
+            ExecStartPre： ExecStart前运行。也就是说 服务启动前要做的事，比如语法检查等。不是每个服务都有这个选项，要服务本身支持
+            ExecStartPost： ExecStart后运行。也就是说 启动后收尾做的是，不是每个服务都有这个选项，要服务本身支持
+            ExecStop：指明停止unit要运行的命令或脚本。命令"systemctl status ServiceName.service"就是调用 ExecStop 指定的命令或脚本。
+                     如果没有配置ExecStop，运行"systemctl status ServiceName.service"命令后，系统会发送kill指令。比如在shell脚本中做如下配置：
+                     ExecStop=/bin/kill -s QUIT \$MAINPID ,	QUIT 表示 SIGQUIT 信号，$MAINPID 是服务的systemd变量，它指向主应用程序的PID
+            Restart：当设定Restart=1 时，则当次daemon服务意外终止后，会再次自动启动此服务
+            RestartSec: 设置在重启服务( Restart= )前暂停多长时间。 默认值是100毫秒(100ms)。 如果未指定时间单位，那么将视为以秒为单位。 例如设为"20"等价于设为"20s"。也就是服务启动的延迟时间
+            PrivateTmp：设定为yes时，会在生成/tmp/systemd-private-UUID-NAME.service-XXXXX/tmp/目录
+        
+        Install段的常用选项：
+            Alias：别名，可使用systemctl command Alias.service
+            RequiredBy：被哪些units所依赖，强依赖. 目标启动时必须成功启动该服务，否则目标启动失败（慎用）。
+            WantedBy：被哪些units所依赖，弱依赖. 目标启动时会尝试启动该服务，但服务失败不影响目标。
+                    用于定义 服务在哪些目标（Target）下被启用，即控制服务在系统启动时如何自动运行。
+                    当执行 systemctl enable myservice.service 时，systemd 会在 WantedBy= 指定的目标目录下创建一个符号链接，从而将服务与目标绑定。 RequiredBy 也是一样, 只是和 WantedBy 有强弱依赖的区别
+            Also：安装本服务的时候还要安装别的相关服务
+
+        systemctl daemon-reload     # 对于新创建的unit文件，或者修改了的unit文件，要通知systemd重载此配置文件,而后可以选择重启
+
+
+    范例: 分析"rpcbind.service"
+        cat /usr/lib/systemd/system/rpcbind.service
+        [Unit]
+        Description=RPC bind service					# unit的统一说明，"systemctl status rpcbind.service"这个命令打印出来的描述信息就来自这里
+        DefaultDependencies=no										
+
+        # Make sure we use the IP addresses listed for
+        # rpcbind.socket, no matter how this unit is started.
+        Requires=rpcbind.socket							# 强依赖，要启动"rpcbind.service"，必须先启动"rpcbind.socket"；启动后，如果"rpcbind.socket"关闭了，"rpcbind.service"也会自动关闭
+        Wants=rpcbind.target							# 弱依赖，可有可没有
+        After=systemd-tmpfiles-setup.service			# 定义unit的启动次序，表示"rpcbind.service"应该晚于"systemd-tmpfiles-setup.service"启动
+
+        [Service]										# [Service]说明是对服务的配置
+        Type=forking
+        EnvironmentFile=/etc/sysconfig/rpcbind			# 环境文件：里面是存的变量
+        ExecStart=/sbin/rpcbind -w $RPCBIND_ARGS		# 定义启动时运行的程序，$RPCBIND_ARGS 这个参数的值来源于上面定义的环境文件
+
+        [Install]										# 设置运行在哪个模式下启动
+        WantedBy=multi-user.target						# 表示在 multi-user 这个环境中启动 rpcbind 服务
+
+    	总结：
+		    在 systemd 机制下，service是service，socket是socket。
+		    "/usr/lib/systemd/system/"目录下的service文件，对应的就是centos6中的服务脚本。所以在centos7中不用写脚本，改为写service文件。
+		    编译安装的程序，通常没有service文件，需要自己编写，但是不用完全手写，拷贝一个现成的service文件，修改相关项。比如 tomcat 编译安装或自定义安装就没有service 文件
+
+    范例: 自定义service文件
+        vim /etc/systemd/system/hello.service						            # 自定义的service文件应该放在"/etc/systemd/system/"目录，并且后缀要命名为".service", Ubuntu也是一样
+        [Unit]
+        Description=Hello World
+        [Service]
+        TimeoutStartSec=0
+        ExecStart=/bin/sh -c "while true; do echo Hello World; sleep 1; done"	# 输出在终端看不到，写进了系统日志，centos的系统日志路径是"/var/log/messages"
+        ExecStop=/bin/kill sh													# 在 centos8 中，这里可以写为"kill sh",  但是在Ubuntu中，要加上绝对路径"/bin/kill"								
+        [Install]
+        WantedBy=multi-user.target
+
+        如果是在Ubuntu中，要注意以下问题：
+            1."ExecStop=/bin/kill sh" 中的kill要写绝对路径，也就是"/bin/kill", 如果写"kill sh"会开启服务失败。kill 既是外部命令，也是内部命令，Ubuntu可能在service文件中不支持使用shell内部命令
+            2. ubuntu日志文件的日志路径是"/var/log/syslog"，Ubuntu不会把每个打印输出都写到日志中，只会写一次。Ubuntu的日志记录规则需要查询文档了解！
+	
+	
+target管理:
+    centos6有0-6七种运行模式，模式之间的差别就是服务在不同的模式下设为启动或关闭。所以运行模式的本质是：不同服务的组合
+	在centos7及以后，取消了0-6这七种模式，用另外一个概念来实现，称之为target，这些target实际上就是不同服务的组合
+	在centos6中，在"/etc/inittab"文件中指定系统的默认运行级别；在centos7中，"/etc/inittab"文件已经失效
+    target实际上是资源的集合，这些资源可能是service、也可能是socket或其它资源
+
+    target units：相当于CentOS 6以及之前版本的runlevel , unit配置文件：
+        ls /usr/lib/systemd/system/*.target | wc -l
+        systemctl list-unit-files --type target --all | wc -l
+
+    按照服务组合将target分类，突破了"0~6"七种模式的限制:
+        systemctl list-unit-files --type target --all 
+	
+	centos7 及之后的版本兼容老版本的0~6七运行模式，但都是软连接指向target，所以仍然可以使用 init 命令来切换运行模式:
+        ll /usr/lib/systemd/system/runlevel*.target
+		lrwxrwxrwx. 1 root root 15 Aug 20  2021 /usr/lib/systemd/system/runlevel0.target -> poweroff.target
+		lrwxrwxrwx. 1 root root 13 Aug 20  2021 /usr/lib/systemd/system/runlevel1.target -> rescue.target
+		lrwxrwxrwx. 1 root root 17 Aug 20  2021 /usr/lib/systemd/system/runlevel2.target -> multi-user.target
+		lrwxrwxrwx. 1 root root 17 Aug 20  2021 /usr/lib/systemd/system/runlevel3.target -> multi-user.target
+		lrwxrwxrwx. 1 root root 17 Aug 20  2021 /usr/lib/systemd/system/runlevel4.target -> multi-user.target
+		lrwxrwxrwx. 1 root root 16 Aug 20  2021 /usr/lib/systemd/system/runlevel5.target -> graphical.target
+		lrwxrwxrwx. 1 root root 13 Aug 20  2021 /usr/lib/systemd/system/runlevel6.target -> reboot.target
+
+    target相关命令：
+        systemctl list-dependencies graphical.target    # 查看"graphical.target"的依赖性
+        systemctl list-dependencies sysinit.target      # "sysinit.target"下面有很多资源, centos7及以后使用sysinit.target做初始化工作(比如初始化主机名、swap分区等)代替Centos6中的开机启动初始化脚本"/etc/rc.d/rc.sysinit"
+        systemctl isolate graphical.target              # 级别切换,相当于 init N. 这里表示切换到图形界面，需要图像界面组件支持. 如果没有图形界面组件，表面上切换成功，实际上没有切换成功
+        runlevel                                        # 查看系统运行级别，检查是否切换成功
+        systemctl default                               # 进入默认target
+        systemctl get-default                           # 查看开机进入哪种模式
+        
+        systemctl set-default graphical.target          # "systemctl set-default TARGET.target" 设置开机默认进入指定模式，这个指令在"/etc/inittab"文件中有说明
+		Removed symlink /etc/systemd/system/default.target.														
+		Created symlink from /etc/systemd/system/default.target to /usr/lib/systemd/system/graphical.target. 	# 实际上就是用一个软链家指向指定的 target
+
+
+不写服务脚本实现开机启动:
+    Centos7:
+        ll /etc/rc*.d/*local
+        -rw-r--r-- 1 root root 473 Dec  7  2023 /etc/rc.d/rc.local
+
+    CentOS6:
+        ll /etc/rc*.d/*local
+        lrwxrwxrwx. 1 root root 13 Aug 20  2021 /etc/rc2.d/S99local -> ../rc.local		# 传统的软连接都指向"/etc/init.d/"这个目录下的服务，但是这个软连接指向"/etc/rc.d/rc.local"
+        lrwxrwxrwx. 1 root root 13 Aug 20  2021 /etc/rc3.d/S99local -> ../rc.local
+        lrwxrwxrwx. 1 root root 13 Aug 20  2021 /etc/rc4.d/S99local -> ../rc.local
+        lrwxrwxrwx. 1 root root 13 Aug 20  2021 /etc/rc5.d/S99local -> ../rc.local	
+        -rw-r--r--. 1 root root 473 Oct 2  2020 /etc/rc.d/rc.local
+   
+        chkconfig --list                     #  list 里面也没有"rc.local"这样一个服务，所以"/etc/rc.d/rc.local"这个脚本不属于正常的服务脚本
+    
+    "/etc/rc.d/rc.local":
+        CentOS6: 把服务放在"/etc/rc.d/rc.local"，在2、3、4、5模式下就会开机启动!
+		CentOS7和CentOS8: "/etc/rc.d/rc.local" 这个脚本也会被调用，但是默认这个文件没有运行权限，需要手动加上。
+        Ubuntu18.04 也支持"/etc/rc.d/rc.local"文件！但默认无 /etc/rc.local 文件,可以创建此脚本文件并添加执行权限,rc.local的首行必须有shebang机制
+	
+    编译安装的程序服务可以放到"/etc/rc.d/rc.local"文件中实现开机自动启动！
+

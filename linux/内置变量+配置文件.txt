@@ -46,14 +46,17 @@ Autofs
     echo $LANG
     echo $OLDPWD
     echo $RANDOM            # 生成一个0到32767之间的一个随机数
-    echo $$                 # 当前shell的进程编号
+    echo $$                 # 当前shell的进程编号.
+    echo $BASHPID           # 等价于 echo $$
 
 配置文件和目录:
     /etc/sudoers
-    /etc/hostname
+    /etc/hostname           # centos7及以上的主机名配置文件
+    /etc/sysconfig/network  # centos6的主机名配置文件
     /etc/shells
     /etc/os-release			# Debian系（如Ubuntu）还是Red Hat系（如CentOS、Fedora）的Linux发行版，通常都会包含这个文件
     /etc/redhat-release		# CentOS and reahat
+    /etc/centos-release     # 查看 centos 版本
     /etc/issue 				# 登录前提示文件
     /etc/motd   			# 登录后提示文件
     /etc/profile.d/env.sh	# 定义history的格式
@@ -87,10 +90,92 @@ Autofs
     /etc/fstab                                  # 持久化挂载.是开机自动挂载的配置文件
     /etc/mtab                                   # 是当前的分区挂载情况，记录的是当前系统已挂载的分区。
     /proc/sys/vm/swappiness                     # swap的值决定了当内存占用达到一定的百分比时，会启用swap分区的空间
-    /proc/sys/vm/drop_caches                    # 手动释放内存缓存
+    /proc/sys/vm/drop_caches                    # 手动释放内存缓存，建议先执行sync(会将所有未写的系统缓冲区写到磁盘中，包含已修改的 i-node、已延迟的块 I/O 和读写映射文件)
         echo 1 > /proc/sys/vm/drop_caches       # 写入1代表只释放page cache的可回收部分
         echo 2 > /proc/sys/vm/drop_caches       # 写入2代表只释放slab cache中的可回收部分
         echo 3 > /proc/sys/vm/drop_caches       # 写入3代表同时释放page 
+
+    /etc/services                               # 应用常用的端口号
+    /proc/sys/net/ipv4/ip_local_port_range      # 客户端随机端口范围定义
+    /proc/sys/net/ipv4/tcp_max_syn_backlog      # 未完成连接队列大小，默认值128,建议调整大小为1024以上
+    /proc/sys/net/core/somaxconn                # 完成连接队列大小，默认值128,建议调整大小为1024以上
+    /proc/sys/net/ipv4/tcp_retries1             # 指定在底层IP接管之前TCP最少执行的重传次数，默认值是3
+    /proc/sys/net/ipv4/tcp_retries2             # 指定连接放弃前TCP最多可以执行的重传次数，默认值15(一般对应13～30min)    
+    /proc/sys/net/ipv4/tcp_congestion_control   # 当前所使用的拥塞控制算法
+
+
+    /etc/sysctl.conf                            # 内核TCP参数优化(上线之前服务器都会先优化),编辑文件并加入以下内容, 让参数生效 sysctl -p 
+	net.ipv4.tcp_fin_timeout = 2
+	net.ipv4.tcp_tw_reuse = 1
+	net.ipv4.tcp_tw_recycle = 1
+	net.ipv4.tcp_syncookies = 1
+	net.ipv4.tcp_keepalive_time = 600
+	net.ipv4.ip_local_port_range = 2000 65000
+	net.ipv4.tcp_max_syn_backlog = 16384
+	net.ipv4.tcp_max_tw_buckets = 36000
+	net.ipv4.route.gc_timeout = 100
+	net.ipv4.tcp_syn_retries = 1
+	net.ipv4.tcp_synack_retries = 1
+	net.ipv4.tcp_max_orphans = 16384
+	net.core.somaxconn = 16384
+	net.core.netdev_max_backlog = 16384    
+
+
+    [opc@docker-halo ~]$ cat /etc/sysctl.conf           # bbrplus
+    net.core.default_qdisc=fq
+    net.ipv4.tcp_congestion_control=bbrplus
+    fs.file-max = 1000000
+    fs.inotify.max_user_instances = 8192
+    net.ipv4.tcp_tw_reuse = 1
+    net.ipv4.ip_local_port_range = 1024 65535
+    net.ipv4.tcp_rmem = 16384 262144 8388608
+    net.ipv4.tcp_wmem = 32768 524288 16777216
+    net.core.somaxconn = 8192
+    net.core.rmem_max = 16777216
+    net.core.wmem_max = 16777216
+    net.core.wmem_default = 2097152
+    net.ipv4.tcp_max_tw_buckets = 5000
+    net.ipv4.tcp_max_syn_backlog = 10240
+    net.core.netdev_max_backlog = 10240
+    net.ipv4.tcp_slow_start_after_idle = 0
+    # forward ipv4
+    net.ipv4.ip_forward = 1
+
+    /etc/udev/rules.d/                                  # udev 规则文件的默认存放目录，其中的规则会在系统启动或设备插入时生效
+    /etc/sysconfig/network-scripts/ifcfg-IFACE          # 网络配置 
+    /etc/resolv.conf                                    # DNS生效会记录到此文件中
+    /etc/hosts
+    /etc/sysconfig/static-routes                        # 静态路由配置文件, centos8 不可用   
+    /etc/netplan/XXX.yaml                               # ubuntu网络配置    
+
+    /etc/ssh/sshd_config
+    /etc/netplan/01-netcfg.yaml                         # ubuntu 静态路由配置文件
+
+    /proc/$pid/status                                   # proc目录下有很多以进程编号命名的目录.status文件就是进程的相关信息,可使用cat查看
+    /sys/block/sda/queue/scheduler                      # 调度算法
+    
+    /proc/$pid/maps                                     # 进程对应的内存映射
+    /proc/$pid/fd/$fd                                   # $fd 是进程在使用的文件的文件描述符
+
+    /etc/crontab                                        # 系统corn任务,主配置文件  
+    /etc/cron.d/                                        # 系统corn任务,子配置文件
+    /var/spool/cron/USERNAME                            # centos 用户corn任务 
+    /var/spool/cron/crontabs/USERNAME                   # buntu 用户corn任务  
+    /var/log/cron                                       # 计划任务日志
+    /usr/lib/tmpfiles.d/tmp.conf                        # 清理临时文件的配置文件
+    
+    /boot/grub/grub.conf                                # 指定了操作系统内核文件，以及根文件系统
+    /etc/inittab                                        # 此文件记录了用于系统初始化的各种参数,比如启动后的运行模式, runlevel 命令的值就来源于此文件中的定义
+
+    /proc/sys/net/ipv4/ip_forward                       # 配置路由
+
+    /usr/lib/systemd/system/                            # systemd的单元资源文件
+	
+    /etc/systemd/system：                               # 系统管理员和用户使用放置service unit文件的目录
+    /usr/lib/systemd/system：                           # 发行版打包者放置service unit文件的目录
+	
+    /var/log/syslog                                     # ubuntu日志文件的路径
+
 VNC:
     VNC 是在基于 UNIX 和 Linux 操作系统的免费的开源软件,远程控制能力强大,高效实用,其性能可以和 Windows 和 MAC 中的任何远程控制软件媲美。
     VNC 连接无界面系统时，可能只能看到命令行窗口，因为没有默认的桌面环境。如果需要运行图形界面程序，还需要安装相应的桌面环境，如 GNOME、KDE、XFCE 等，并进行相关配置。

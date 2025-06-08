@@ -64,6 +64,7 @@ lscpu
 arch
 uname -r 
 lsblk
+blkid			# blkid主要用来对系统的块设备(包括交换分区)所使用的文件系统类型、LABEL、UUID等信息进行查询
 df	-i			# disk free , -i 显示分区中 Inodes 可用的数量
 free -h
 

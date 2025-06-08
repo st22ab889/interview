@@ -10,7 +10,7 @@
 
 直接输 xargs, 等价于 xargs echo
 
-xargs ls -l             # 键盘输入后, ctrl + D 结束输入
+xargs ls -l             # 键盘输入后, ctrl + D 退出输入
 
 echo /opt | xargs ls -l
 ls f* | xargs rm
