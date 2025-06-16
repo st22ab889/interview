@@ -86,6 +86,8 @@ man 		 	# 配合 whatis 命令使用
 
 watch -n 1 -d=cumulative free -h			# -n 1 表示 每隔一秒运行"free -h"， -d=cumulative 表示高亮显示变化情况
 
+type :										# ":" 是个内部命令，永远返回真
+
 =======================================================================文件管理==================================================================
 
 pwd
@@ -236,6 +238,7 @@ getent  shadow
 getent  shadow 用户
 
 useradd -r -u 48 -g apache -s /sbin/nologin -d /var/www -c "Apache" apache	  	# -r 创建系统用户; -d HOME_DIR; -c 用户的注释信息; -p 加过密的密码. 重点
+useradd -p `openssl passwd -6 -salt "5U3EiJHnQHcju7SJ" 123456` xiaoming			# -p 指定密码, -6表示使用sha512
 usermod  -s /bin/false -a -G aaron,root xiaoming								# -a 表示追加
 	usermod -Groot zhang
 userdel  -fr 用户名

@@ -1,0 +1,501 @@
+======================================================================SSH协议===================================================================
+
+SSH(secure shell protocol), 代替传统的 telnet 协议
+   软件: OpenSSH 、dropbear
+   协议版本:
+        v1: 基于CRC-32做MAC，不安全
+        v2: 双方主机协议选择安全的MAC方式，基于DH算法做密钥交换，基于RSA或DSA实现身份认证
+
+    ssh 公钥交换原理
+        1) 客户端发起链接请求
+        2) 服务端返回自己的公钥，以及一个会话ID（这一步客户端得到服务端公钥）。 # 这个过程有风险，要确保服务器的公钥是真实的，这里没有使用到证书机制，只能人为确保！
+        3) 客户端生成密钥对(客户端临时生成)
+        4) 客户端用自己的公钥异或会话ID，计算出一个值Res，并用服务端的公钥加密
+        5) 客户端发送加密后的值到服务端，服务端用私钥解密，得到Res
+        6) 服务端用解密后的值Res异或会话ID，计算出客户端的公钥（这一步服务端得到客户端公钥）
+        7) 最终：双方各自持有三个秘钥，分别为自己的一对公、私钥，以及对方的公钥，之后的所有通讯都会被加密
+
+    ll /etc/ssh/                    # 每个安装ssh的主机都自带了公钥和密钥. 当用户远程连接ssh服务器时，会复制ssh服务器/etc/ssh/ssh_host*key.pub(公钥)到客户机的 ~/.ssh/know_hosts 文件 
+    /$user/.ssh/known_hosts         # 保存远程主机的公钥
+
+    ssh 192.168.32.101
+	The authenticity of host '192.168.32.101 (192.168.32.101)' can't be established.
+	ECDSA key fingerprint is SHA256:TcIIiLI+VCMoPspFCqRZHywv50EB/CMwDoIk6RxTB50.	    # 对方公钥的sha256算法哈希值，并经过了base64编码，需要自己确认
+	ECDSA key fingerprint is MD5:43:cb:24:f0:02:26:58:6c:cf:1b:56:67:e5:50:be:30.	    # 对方公钥的MD5算法的哈希值，需要自己确认
+	Are you sure you want to continue connecting (yes/no)?
+
+=============================================================OpenSSH+rsync+SCP+sshpass==========================================================
+     
+OpenSSH 
+    Openssh软件相关包：
+		openssh
+		openssh-clients             # rpm -ql openssh-server, /etc/ssh/sshd_config 是 SSH服务端的配置文件
+		openssh-server              # rpm -ql openssh-clients, /etc/ssh/ssh_config 是SSH客户端的配置文件
+
+ 	cat /etc/ssh/ssh_config         # 置文件中的选项在ssh命令中使用"-o"选项指定
+    ......省略
+    #   StrictHostKeyChecking ask			 # 该值默认为 ask，如果设置为no，则在首次登录时不显示"检查远程主机公钥的摘要"提示
+    #   Port 22								 # 指定远程主机端口，默认端口为22
+    Include /etc/ssh/ssh_config.d/*.conf	 # 这项centos8上才有, 只要把配置文件放到"/etc/ssh/ssh_config.d/"目录下，并且以".conf"结尾，配置一样生效
+    ......省略
+
+
+    ssh [user@]host [COMMAND]        # 也可使用 -l 指定user
+        -p          # 远程服务器监听的端口
+        -b          # 指定连接的源IP
+        -v          # 调试模式
+        -C          # 压缩方式，作用是压缩数据，节约带宽		
+        -X          # 支持x11转发，把远程机器的图形界面在本地机器上显示(比较重要的选项)
+        -t          # 强制伪tty分配，如：ssh -t remoteserver1 ssh -t remoteserver2 ssh remoteserver3
+        -o option   # 如：-o StrictHostKeyChecking=no
+        -i <file>   # 指定私钥文件路径，实现基于key验证，默认使用文件： ~/.ssh/id_dsa, ~/.ssh/id_ecdsa, ~/.ssh/id_ed25519，~/.ssh/id_rsa 等	
+
+    ssh -t 10.10.0.2 ssh -t 10.10.0.3  ssh 10.10.0.4       # 10.10.0.3只能从10.10.0.2登录,10.10.0.4只能从10.10.0.3登录, 使用-t选项一条命令登录到10.10.0.4
+
+    ssh -o StrictHostKeyChecking=no -p 22 192.168.32.101 hostname -I    # 在登录时就运行命令，运行完成后会自动退出SSH登录
+
+    ssh 192.168.32.101 /bin/bash < systeminfo.sh           # 在远程主机运行本地shell脚本,运行完成后会自动退出SSH登录        
+
+
+SSH服务器配置
+	服务器端：sshd 
+	服务器端配置文件: /etc/ssh/sshd_config
+	服务器端配置文件帮助：man 5 sshd_config
+	
+    常用参数：
+        Port 							# 生产建议修改，连外网一定要改，不改的话很容易受到攻击
+        ListenAddress ip				# 有些服务器有多个IP，有些IP从外网可以访问，有些IP从内网访问，为了安全可以把SSH服务绑定在内网IP上，这样只能通过内网IP连接SSH
+        LoginGraceTime 2m
+        PermitRootLogin yes 			# ubuntu默认不允许root远程ssh登录
+        StrictModes yes 				# 检查.ssh/文件的所有者，权限等
+        MaxAuthTries 6 					# 指定每个 SSH 连接允许的最大认证失败次数.默认值为6.当失败次数达到该值的一半时，后续失败会被记录到日志中.达到最大值后，服务端会断开该连接，防止暴力破解
+        MaxSessions 10 					# 同一个连接最大会话
+        PubkeyAuthentication yes 		# 基于key验证，比密码更安全
+        PermitEmptyPasswords no 		# 空密码连接
+        PasswordAuthentication yes 		# 基于用户名和密码连接，关掉就不支持用户名和密码登录，只能基于key验证，这样更安全
+        GatewayPorts no
+        ClientAliveInterval 10 			# 单位:秒. 改后需要重启 sshd, 然后新开一个连接才有效
+        ClientAliveCountMax 3 			# 默认3
+        UseDNS yes 						# 提高速度可改为no，可以让连接速度加快
+        GSSAPIAuthentication yes 		# 提高速度可改为no，可以让连接速度加快
+        MaxStartups 					# 未认证连接最大值，默认值10，意思是限制并行认证ssh客户端数量.注意是认证的数量,不是登录的数量
+        Banner /path/file 
+        # 以下可以限制可登录用户的办法：
+        AllowUsers user1 user2 user3	# 允许哪些用户登录
+        DenyUsers user1 user2 user3		# 不允许哪些用户登录
+        AllowGroups g1 g2				# 允许哪些组登录
+        DenyGroups g1 g2				# 不允许哪些组登录
+
+    修改配置参数需要重启服务才生效:
+        systemctl restart sshd
+
+    ssh服务的最佳实践
+        建议使用非默认端口
+        禁止使用protocol version 1
+        限制可登录用户
+        设定空闲会话超时时长
+        利用防火墙设置ssh访问策略
+        仅监听特定的IP地址
+        基于口令认证时，使用强密码策略，比如：tr -dc A-Za-z0-9_ < /dev/urandom | head -c 12 | xargs
+        使用基于密钥的认证
+        禁止使用空密码
+        禁止root用户直接登录
+        限制ssh的访问频度和并发在线数
+        经常分析日志
+
+    
+rsync
+    自于rsync包.基于ssh和rsync协议实现高效率的远程系统之间复制文件，比scp更快，基于增量数据同步(即只复制两方不同的文件).适合更新数据库，同步数据，效率高！建议使用rsync替代scp
+
+    rsync -av /etc ServerIP:/tmp 			# 复制目录和目录下文件.目录后面是否跟"/"有区别
+	rsync -av /etc/ ServerIP:/tmp 			# 只复制目录下文件
+		-n          # 模拟复制过程
+		-v          # 显示详细过程
+		-r          # 递归复制目录树
+		-p          # 保留权限
+		-t          # 保留修改时间戳
+		-g          # 保留组信息
+		-o          # 保留所有者信息
+		-l          # 将软链接文件本身进行复制（默认）
+		-L          # 将软链接文件指向的文件复制
+		-u          # 如果接收者的文件比发送者的文件较新，将忽略同步
+		-z          # 压缩，节约网络带宽
+		-a          # 存档，相当于-rlptgoD，但不保留ACL（-A）和SELinux属性（-X）
+		--delete    # 源数据删除，目标数据也自动同步删除
+
+    rsync -auv --delete /data/test 10.0.0.7:/data
+    rsync -av /root/.ssh 192.168.32.111:/root		# 把/root/.ssh目录同步到 192.168.32.111 主机
+
+
+ssh基于key验证
+	ssh服务登录的常用验证方式
+		用户/口令
+		基于密钥，不用再输入密码，批量操作主机方便
+	
+	基于用户和口令登录验证
+		(1). 客户端发起ssh请求，服务器会把自己的公钥发送给用户
+		(2). 用户会根据服务器发来的公钥对密码进行加密
+		(3). 加密后的信息回传给服务器，服务器用自己的私钥解密，如果密码正确，则用户登录成功
+	
+	基于密钥的登录方式(重要):
+		(1). 首先在客户端生成一对密钥（ssh-keygen）
+		(2). 并将客户端的公钥ssh-copy-id 拷贝到服务端
+		(3). 当客户端再次发送一个连接请求，包括ip、用户名
+		(4). 服务端得到客户端的请求后，会到authorized_keys中查找，如果有响应的IP和用户，就会随机生成一个字符串.服务端将使用客户端拷贝过来的公钥进行加密，然后发送给客户端
+		(5). 得到服务端发来的消息后，客户端会使用私钥进行解密，然后将解密后的字符串(用服务器的公钥加密)发送给服务端
+		(6). 服务端接受到客户端发来的字符串后(用私钥解密)，跟之前的字符串进行对比，如果一致，就允许免密码登录
+
+    ssh-keygen                       # 在客户端生成密钥对
+    ll /root/.ssh/                   # 密钥对保存在此路径
+    ssh-copy-id root@192.168.32.101  # 将公钥拷贝到目标主机，默认拷贝"/用户家目录/.ssh/"目录下的公钥，也可以使用 -i 指定公钥文件路径
+    ssh 192.168.32.101               # 远程主机的"authorized_keys"文件中保存了客户端的公钥, 实现无密码登录远程主机
+
+
+    示例: 基于key验证是单向验证,但在一个集群服务中，往往机器间都要实现基于key验证
+            
+        假如一个redis集群中有三台机器，需做6次基于key验证. 如果所有主机都共用一对公钥私钥，并且自己信任自己，就实现了多台主机之间的彼此互通！缺点是一旦有人拿到root密码，就可以操作集群中的任何主机	
+
+        解决不安全的问题：
+            rsync -av /root/.ssh 192.168.32.111:/root       # 将公钥拷贝到目标主机，默认拷贝"/用户家目录/.ssh/"目录下的公钥，也可以使用 -i 指定公钥文件路径
+            rsync -av /root/.ssh 192.168.32.112:/root
+            ssh-keygen -p				# 给私钥设口令, 设置后密钥对自动同步到 192.168.32.111 和 192.168.32.112 主机, 因为 rsync 一直在后台运行
+            ssh 192.168.32.111			# 每次登录集群中的主机的时候就需要输入私钥密码
+            
+        验证代理(authentication agent):保密解密后的密钥，口令就只需要输入一次，在GNOME中，代理被自动提供给root用户
+            ssh-agent bash		    # 启用代理,这个代理能记住密码，就不用再输入私钥密码. 
+            ssh-add				    # 私钥的密码托管给这个代理.注意代理只是临时保存密码,仅对本次会话有效.退出登录再重新登录主机使用私钥时还是需要密码或者再次把密码托管给代理.
+            ps aux				    # ssh-agent 实际上是一个后台运行的程序
+            ssh 192.168.32.111	    # 不用输入密码就能登录
+
+        总结：
+            只要保证私钥文件的安全，就破解不了。
+            工作中会把各个服务器的基于key验证的配置做好，远程管理不用输密码，特别方便，适用于将来批量管理，实现自动化运维！
+
+
+scp
+     scp [options] SRC... DEST/
+        -C          # 压缩数据流
+		-r          # 递归复制
+		-p          # 保持原文件的属性信息
+		-q          # 静默模式
+		-P PORT     # 指明remote host的监听的端口
+	
+    scp  -r test/ 10.0.0.10:/data   # 将 test 目录拷贝到目标主机的data目录下，-r 拷贝文件见      
+
+
+sshpass
+    sshpass是EPEL源提供的自动登录ssh工具, sshpass可以解决"ssh登陆不能在命令行中指定密码"的问题. sshpass支持-p参数指定明文密码，支持密码从命令行、文件、环境变量中读取。
+    sshpass用于非交互SSH的密码验证，一般用在sh脚本中，无须再次输入密码（本机known_hosts文件中有的主机才能生效）。
+
+    sshpass [option] command parameters
+        -p password     # 指定明文密码，然后直接登录远程服务器
+        -f filename     # 后跟保存密码的文件名，密码是文件内容的第一行
+        -e 			    # 将环境变量SSHPASS作为密码
+
+    yum -y install sshpass      # sshpass只能做提交口令,做不到回答yes/no,需提前把远程主机的公钥加到known_hosts文件.或使用"-o StrictHostKeyChecking=no"设置不询问
+    sshpass -p admin000 ssh -o StrictHostKeyChecking=no root@192.168.32.102
+    sshpass -p admin000 ssh -o StrictHostKeyChecking=no 192.168.32.103 hostname -I          # 如果不指定用户默认root用户身份登录
+    sshpass -p admin000 scp systeminfo.sh 192.168.32.104:/                                  # 拷贝文件, 不用输密码，交互式变非交互式,可以把命令写到脚本实现自动化
+    sshpass -p admin000 ssh-copy-id -o StrictHostKeyChecking=no root@192.168.32.101         # 拷贝公钥到远程主机. "ssh-copy-id" + expect 也能实现非交互式拷贝公钥,但不仅要安装expect, 还要写expect格式脚本
+
+
+(了解)sftp
+    交互式文件传输工具，用法和传统的ftp工具相似，利用ssh服务实现安全的文件上传和下载，使用ls cd mkdir rmdir pwd get put 等指令
+    sftp 192.168.32.101
+
+
+lrzsz: Linux/Unix同Windows进行ZModem文件传输的命令行工具
+    yum -y install lrzsz        # lrzsz是一款在linux里可代替ftp上传和下载的程序，这个命令无法在putty、Windows PowerShell、CMD界面使用
+    sz pki/ca.crt               # 下载
+    rz                          # 上传
+
+===================================================================SSH其它相关工具===============================================================           
+
+sshfs
+    挂载远程主机目录，由EPEL源提供，目前CentOS8 还没有提供，可以利用ssh协议挂载远程目录
+    yum install fuse-sshfs
+    sshfs 10.0.0.8:/data /mnt				# 利用SSH协议进行挂载.表示把"10.0.0.8"这个主机的"/data"目录挂载到当前主机的"/mnt"目录上
+	df /mnt
+
+
+pssh
+    轻量级自动化运维工具, 意思是管理少量主机(比如几十台)，批量操作主机，比如改口令、禁用linux、装软件等. pssh 命令批量管理主机的前提是：先把基于key的验证做好！
+
+	EPEL源中提供了多个自动化运维工具：
+		pssh：基于python编写，可在多台服务器上执行命令的工具，也可实现文件复制，提供了基于ssh和scp的多个并行工具
+		pdsh：Parallel remote shell program，是一个多线程远程shell客户端，可以并行执行多个远程主机上的命令。 可使用几种不同的远程shell服务，包括rsh，Kerberos IV和ssh
+		mussh：Multihost SSH wrapper，是一个shell脚本，允许使用命令在多个主机上通过ssh执行命令。可使用ssh-agent和RSA/DSA密钥，以减少输入密码  
+	
+    pssh 命令选项：
+		-H          # 主机字符串，内容格式”[user@]host[:port]”
+		-h file     # 主机列表文件，内容格式”[user@]host[:port]”
+		-A          # 手动输入密码模式
+		-i          # 每个服务器内部处理信息输出
+		-l          # 登录使用的用户名
+		-p          # 并发的线程数【可选】
+		-o          # 输出的文件目录【可选】
+		-e          # 错误输出文件【可选】
+		-t          # TIMEOUT 超时时间设置，0无限制【可选】
+		-O          # SSH的选项
+		-P          # 打印出服务器返回信息
+		-v          # 详细模式
+		--version   # 查看版本
+	
+	示例：
+		pssh -H 192.168.32.101 -i hostname -i       # -H 主机IP, -i 返回远程主机运行命令后的结果，"hostname -i"远程主机需要运行的命令
+		pssh -H "192.168.32.101 192.168.32.102 192.168.32.103" -i hostname -i           # 如果有多台主机，要用双引号把多台主机的IP引起来
+		pssh -H "192.168.32.101 192.168.32.102 192.168.32.103" touch /data/abc.txt      # 批量在主机上创建文件
+		pssh -H "192.168.32.101 192.168.32.102 192.168.32.103" -i ls -l /data/abc.txt
+		 
+		cat host.txt                        # 可以把要管理的主机的IP列在一个文件中
+		192.168.32.101
+		192.168.32.102 
+		192.168.32.103
+		
+		pssh -h host.txt -i hostname -i     # -h 从文件中获取主机的IP
+
+
+SSH高级用法及自动运维工具(非重点)
+    SSH高级应用:
+        1. SSH 会自动加密和解密所有 SSH 客户端与服务端之间的网络数据
+        2. SSH 还能够将其他TCP端口的网络数据通过SSH连接来转发,并且自动提供了相应的加密及解密服务,这一过程也被叫做"隧道(tunneling)".这是因为SSH能为其他TCP链接提供了一个安全的通道来进行传输
+           例如Telnet，SMTP，LDAP 这些TCP应用均能从中受益，避免用户名、密码以及隐私信息明文传输。与此同时如果防火墙限制了一些网络端口的使用,但允许SSH连接,就能通过SSH端口转发被限制端口的数据
+
+	SSH端口转发能够提供两大功能：加密 SSH Client 端至 SSH Server 端之间的通讯数据; 突破防火墙的限制完成一些之前无法建立的TCP连接
+
+    
+    SSH本地端口转发 和 SSH远程端口转发 的区别是 SSH Client 和 SSH Server 的角色相反, 其它网络架构都一样.
+    SSH端口转发需要将 SSH Server 的"/etc/ssh/sshd_config"中的"AllowTcpForwarding"设为yes.
+
+
+	SSH本地端口转发：
+        ssh -L localport:remotehost:remotehostport sshserver    # 外部机器通过SSH往内部机器连, 防火墙可能会拦截
+            -f      # 后台启用
+            -N      # 不打开远程shell，处于等待状态
+            -g      # 启用网关功能
+            -L      # 打开一个本地端口。发送到该端口的所有内容均通过ssh连接放置。相当于正向代理！
+            -R      # 表示 反向代理
+            -D      # 表示 socks5 代理	
+
+        ssh -fNL 9527:10.0.0.28:80 10.0.0.18      
+            9527 是本地要打开的端口, 角色是SSH Client, 在外网, 在此主机上运行端口转发命令(运行后会登录到SSH server). 如果本地主机 9527 端口已打开,可以尝试开始用此端口传输数据. 
+            10.0.0.18 是远程SSH server主机, 在公司内网
+            10.0.0.28 是远程http主机, 在公司内网
+
+        ssh -L 4444:google.com:80 10.0.0.18       # 浏览器中打开 http://localhost:4444 , 则实际上会看到Google的页面。
+
+
+    SSH远程端口转发:       
+        ssh -R SSHServerPort:RemoteHost:RemoteHostPort SSHServer	# 内部机器通过SSH往外部机器连, 防火墙不会阻挡
+
+        ssh -fNgR 9527:10.0.0.28:80 10.0.0.8
+            10.0.0.28:80 是http服务机器,在公司内网
+            10.0.0.8和9527(将要打开的端口)是SSHServer，在外网
+            运行端口转发命令的主机(在公司内网)是SSH Client,要求是拥有"10.0.0.8"这台主机的人打开电脑, 运维工程师运行此命令建立连接,SSH Server就可以通过9527 这个端口传输数据到 SSH Client 
+
+    SSH动态端口转发	
+        方法1:
+            ssh -fND 9527 126.182.120.99            # 本地主机的 SSH Client 连接 SSH Server
+                9527 是本地主机要打开端口
+                126.182.120.99 是远程 SSH server
+
+            在本地主机打开浏览器，配置代理，代理IP为127.0.0.1，代理端口为 9527. 
+            与这台本地主机(假如ip为192.168.1.6)同网段的主机也可以机打开浏览器，配置代理，ip 为 192.168.1.6, 端口为 9527
+
+        方式2:
+            ssh -gfND 9527 126.182.120.99           # 远程主机既是 SSH Client,也是 SSH Server, 自己连自己
+            任何联网的电脑都可以打开浏览器配置代理, 代理IP为126.182.120.99，代理端口为 9527 
+
+
+======================================================================时间同步==================================================================   
+
+加密和安全都依赖时间(比如证书有效期),工作中每个服务器的时间要求一致，并且要和互联网时间的服务器同步. 
+    多主机协作工作时，各个主机的时间同步很重要，时间不一致会造成很多重要应用的故障，如：加密协议，日志，集群等！ 
+
+
+企业中同步时间方式：
+	方式1：使用命令定时同步时间，缺陷是每次都要连互联网，如果互联网上的ntp服务器出现问题，就会同步失败，银行等金融机构不允许连接互联网
+	方式2：企业内部搭建时间服务器，专门提供时间同步，效率高，不依赖互联网
+
+公共NTP(Network Time Protocol)服务：
+    pool.ntp.org：项目是一个提供可靠易用的NTP服务的虚拟集群cn.pool.ntp.org，0-3.cn.pool.ntp.org
+
+	阿里云公共NTP服务器
+		Unix/linux类：ntp.aliyun.com，ntp[1-7].aliyun.com
+		windows类： time.pool.aliyun.com
+	
+	腾讯公共NTP
+		time1-5.cloud.tencent.com
+	
+	大学ntp服务
+		s1a.time.edu.cn 北京邮电大学
+		s1b.time.edu.cn 清华大学
+		s1c.time.edu.cn 北京大学
+	
+	国家授时中心服务器：
+		210.72.145.44
+	
+	美国标准技术院: 
+		time.nist.gov
+
+
+(了解)一次性同步时间：ntpdate 和 rdate
+	ntpdate 
+		rpm -qf `which ntpdate`
+		yum -y install ntpdate          # ntpdate 命令在centos上已经不提供
+        date -s '1 year'                # 把时间设置为1年后
+		ntpdate ntp.aliyun.com          # ntp服务器
+		date
+		
+	rdate
+		yum -y install rdate
+        date -s '1 year'		
+		rdate -s -u time.nist.gov       # rdate 命令用的非常少
+		date
+
+	
+时间同步服务
+    基本架构：公司里面的服务器 --> 公司内部 NTP Server(2台) --> 国内互联网NTP服务器 --> 原子钟
+    时间同步服务： 利用NTP(Network Time Protocol)协议使网络中的各个计算机时间达到同步。目前NTP协议属于运维基础架构中必备的基本服务之一 
+	时间同步软件实现：ntp 和 chrony 既是客户端也是服务端,而且常驻内存,以service的方式来运行,保证时间的同步!
+		ntp(了解)：同步效率比较慢、同步时间精度相对差一些，一般情况够用；centos6及之前的版本使用！
+            将系统时钟和世界协调时UTC同步，精度在局域网内可达0.1ms，在互联网上绝大多数的地方精度可以达到1-50ms. 项目官网：http://www.ntp.org
+		chrony：实现NTP协议的的自由软件。同步更快，精度更高；centos7及之后的版本使用！   
+            可使系统时钟与NTP服务器，参考时钟(例如GPS接收器)以及使用手表和键盘的手动输入进行同步。还可以作为NTPv4(RFC 5905)服务器和对等体运行，为网络中的计算机提供时间服务。
+            设计用于在各种条件下良好运行，包括间歇性和高度拥挤的网络连接，温度变化（计算机时钟对温度敏感），以及不能连续运行或在虚拟机上运行的系统。
+            通过Internet同步的两台机器之间的典型精度在几毫秒之内，在LAN上，精度通常为几十微秒。利用硬件时间戳或硬件参考时钟，可实现亚微秒的精度。
+            chrony可以慢慢同步时间，比如通过调整系统时钟频率让时间快一点和慢一点直到标准时间。好处是，比如日志，如果直接把时间矫正，就会出现在一个时间段内没有日志！
+    	
+	chrony
+        yum info chrony
+        rpm -qi chrony          # Centos7、8系统安装时已自带
+		
+        rpm -ql chrony
+        /etc/chrony.conf						    # 配置文件
+        /usr/bin/chronyc						    # 客户端测试工具
+        /usr/lib/systemd/system/chronyd.service	    # 服务
+        /usr/sbin/chronyd						    # 服务器主程序,也是客户端,因为它要和其它NTP服务器同步
+
+        systemctl status chronyd                    # 默认已经开机启动，系统时间准确是因为这个服务自动启动并且自动同步时间
+
+        #cat /etc/chrony.conf
+        # Use public servers from the pool.ntp.org project.
+        # Please consider joining the pool (http://www.pool.ntp.org/join.html).		# pool指定NTP服务器池而不是单个NTP服务器, server指定单个NTP服务器
+        server 0.centos.pool.ntp.org iburst
+        server 1.centos.pool.ntp.org iburst		# server后面就是时间同步服务, iburst 表示让同步快一点,开启多个并行任务来同步,不加iburst关键字会稍微慢一点
+        server 2.centos.pool.ntp.org iburst		 
+        server 3.centos.pool.ntp.org iburst	
+        ......省略
+        
+        ping 0.centos.pool.ntp.org
+        PING 0.centos.pool.ntp.org (116.203.151.74) 56(84) bytes of data.
+        64 bytes from a.chl.la (116.203.151.74): icmp_seq=1 ttl=128 time=415 ms		#415毫秒就是延时,所以要找一个相对近点的NTP服务器来同步时间更加靠谱
+        ......省略
+
+
+搭建公司内部的NTP服务器:
+    ntp服务器配置:
+        cat /etc/chrony.conf
+        server ntp.aliyun.com iburst			# 配置为阿里云的NTP服务器
+        server ntp1.aliyun.com iburst
+        server ntp2.aliyun.com iburst
+        allow 0.0.0.0/0						# 允许任何网段的任何主机同步时间
+        # Serve time even if not synchronized to a time source.		# 这项很重要,表示即使不能连到互联网ntp服务,也允许其它主机通过本机ntp服务同步时间 
+        local stratum 10	                # ntp层, 比如原子钟在第一层、互联网ntp服务在第二层 .... 经过很多层到达内网的ntp服务,不用关心具体中间经过了多少层,直接设为默认值10,表示是内网的ntp服务
+
+        systemctl restart chronyd
+        ss -ntlu                            # 123端口只是提供了服务端端口,323端口只是提供了客户端端口   
+
+     ntp客户端:
+        cat /etc/chrony.conf
+		server 192.168.32.100 iburst				# NTP服务器指向 ntp服务器
+		......省略
+
+        date -s '1 year'                            # 把时间设置为1年后
+
+        ntpdate 192.168.32.100                      # ntpdate 也可以使用 chrony 服务器, 因为 chrony 服务器也是基于NTP协议实现
+        date
+
+        date -s '-3 year'                           # 把时间设置为3年前
+
+        chronyc                                     # 直接使用 chronyc, 会出现交互式界面. 输入 sources -v 查看同步情况, 输入 exit 退出
+          .-- Source mode  '^' = server, '=' = peer, '#' = local clock.						#  ^ 表示server
+		 / .- Source state '*' = current synced, '+' = combined , '-' = not combined,		#  * 表示成功	
+		| /   '?' = unreachable, 'x' = time may be in error, '~' = time too variable.		#  ? 表示不可达
+
+        chronyc sources -v          # 上面的交互式操作命令等价于这个命令
+        date                        # 看到时间没有同步可以重启 chronyd 服务, 或者等一段时间会自动同步. 等不及可以使用 ntpdate 命令立马同步
+        systemctl restart chronyd   # 注意：为了确保时间一定能同步，最好重新启动 chronyd 服务！
+
+		chronyc sources -v
+		......省略
+		^* 192.168.32.100                 0   8     0     -     +0ns[   +0ns] +/-    0ns		# 出现"*"号,说明时间同步成功        
+
+        date
+        date -u                                     # 显示utc时间
+
+    其它:
+        不用专门拿两台(至少两台)服务器作为ntp服务,可以和其它提供资源服务器公用,比如yum服务器.
+        系统装好后就可以设置ntp服务,作为一项正式使用服务器前的准备工作, 以后之后再设置
+        同步时间时，不会同步时区！
+
+
+(了解)SELinux(Security-Enhanced Linux)；
+    SELinux是美国国家安全局(NSA=The National Security Agency)和SCC(Secure Computing Corporation)开发的Linux的一个强制访问控制的安全模块。
+    2000年以GNU GPL发布，Linux内核2.6版本后集成在内核中. 红帽和Centos默认安装SELinux，其它系统默认不安装，比如ubuntu。
+
+    关闭SELinux用的是DAC技术，开启SELinux用的是MAC技术：
+        DAC：(Discretionary Access Control)自由访问控制.所有进程不受约束，进程无束缚
+        MAC：(Mandatory Access Control)强制访问控制.MAC环境下策略的规则决定控制的严格程度，MAC环境下进程可以被限制. MAC策略被用来定义被限制的进程能够使用那些资源(文件和端口)。默认情况下，没有被明确允许的行为将被拒绝. 
+            
+       示例：
+            例如系统中安装nginx，niginx可以访问特定目录下的文件，比如自身的配置文件、网页文件，在没有开启SELinux的情况下，niginx可以访问所有文件，
+            假如nginx有漏洞，黑客利用漏洞控制了nginx这个进程，就可以利用这个进程访问和nginx无关的文件，比如访问"/etc/passwd"等关键文件，不受访问限制，
+            如果用了SELinux，应用程序和它需要访问的文件、目录、使用的端口等绑定在一起，只能访问限定的这些资源！任何用户，包括root都会收到限制！
+
+    启用和禁用SELinux:
+        ll
+	    -rw-------. 1 root root 1414 Aug 20  2021 anaconda-ks.cfg          # 权限后面的"."表示SELinux标签.标签的功能是说明文件的用途，如果将来文件的用途和文件的标签不匹配，就会禁止使用这个文件
+
+        ll -Z       #  -Z 可以看到具体标签的内容
+        -rw-------. root root system_u:object_r:admin_home_t:s0 anaconda-ks.cfg
+
+        cat /etc/selinux/config
+        SELINUX=disabled                   # enforcing 表强制; permissive 允许允许, 每个受限的进程违规操作不会被禁止，但会被记录于审计日志; disabled 禁用 SELinux.
+
+        reboot				# 开启关闭SELinux后都要重启才会生效
+
+        注意:
+            策略改为enforcing，重启时会自动扫描所有文件，没有标签的文件会被贴上标签，所以在重启的时候会有等待的过程。每个文件贴上SELinux标签后,就说明了每个文件的用途,就能被SELinux策略管理.
+            策略改为disabled，新建的文件将不会有SELinux标签.
+        
+
+    示例: 开启SELinux策略后，修改httpd端口
+        cat /etc/selinux/config
+	    SELINUX=enforcing							# 开启SELinux. 改配置文件永久生效
+
+        reboot
+        yum -y install httpd
+        systemctl enable --now httpd
+        curl 127.0.0.1:80
+
+        cat /etc/httpd/conf/httpd.conf 
+        Listen 8899		                            # 端口改为8899，不符合SELinux策略要求，SELinux策略已经预先定义了一些规范，比如只能使用一些固定端口，不允许使用其它端口
+
+        systemctl restart httpd                     # 启动报错
+        tail -f /var/log/messages                   # 记录了启动失败的日志
+
+        getenforce                      # 查看当前SELinux策略
+        setenforce 0	                # 临时修改SELinux启动策略，马上生效，不用重启.  0 表示 permissive, permissive表示只报警不阻止
+        systemctl restart httpd     
+        tail -f /var/log/secure         # "secure"日志中出现了警告信息
+        curl 127.0.0.1:8899             # 服务正常
+
+        setenforce 1                    # 临时切换为 enforcing
+        curl 127.0.0.1:8899             # 访问httpd服务正常
+        systemctl restart httpd         # 重启报错. SELinux启动后设置就比较麻烦。比如不能随便换端口，需要改SELinux的端口标签，这就是为什么SELinux没有普遍使用的原因
+
+        修改配置文件 + setenforce 可以实现不重启使改变生效.但作为生产服务器,上线前习惯性重启一次.
+
+
+

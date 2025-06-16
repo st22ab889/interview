@@ -1,0 +1,498 @@
+================================================================加密+PKI+CA+SSL/TLS=============================================================
+
+加密算法和协议
+	对称加密: DES、3DES、AES 等
+	非对称加密: 公钥(给别人) + 私钥自己留, 常用算法 RSA、DSA、ECC.
+	单向加密: Hash(md5、sha256等)
+        md5sum | sha1sum [ --check ] file
+        openssl、gpg
+        rpm -V
+	认证协议: SSL/TLS
+
+
+非对称加密：
+    公钥和私钥其实就是一个文件，里面的内容经过base64编码(Base64编码作用是把ASCII码中有些不可见字符转化为可见字符)
+    使用场景:
+        1.适合加密较小数据.
+        2.私钥加密,公钥解密. 公钥解密成功,就证明了私钥加密的正确性.实现了数据来源确认,这就是"数字签名"
+
+单向哈希(散列)算法:
+    单向加密不可逆，不能根据加密结果反推出数据内容, 加密结果称为摘要(digest),也称为"指纹"
+
+
+算法组合使用: 对称加密算法 + 非对称加密算法 + 单向哈希(散列)算法
+    流程:    
+        A(发送方)和B(接收方)通讯，A用hash算法计算出数据的摘要(指纹)，用A的私钥来签名此摘要(私钥加密摘要,这就是数字签名)，然后在后面附加数据，
+        然后用对称密钥加密摘要和数据，再用对方的公钥加密对称密钥，然后把两个加密结果合在一起发送给对方！
+    
+    数据结构：
+        传输的数据 = 对称加密(A私钥(A哈希(数据))+数据) + B的公钥(对称密钥)
+    
+    优点：
+        实现数据来源的确认
+        实现数据加密
+        实现数据完整性校验
+   
+    缺点: 中间人攻击
+
+
+PKI(Public Key Infrastructure 公共密钥加密体系)
+
+    PKI的标准可分为两个部分：一类用于定义PKI，而另一类用于PKI的应用，定义PKI的标准有：
+        ASN．1基本编码规则的规范——X．209(1988)
+        目录服务系统标准——X．500(1993)	
+        IDAP轻量级目录访问协议一IDAP V3	
+        数字证书标准 X．509(1 993)			
+        OCSP在线证二拉状态协议
+        PKCS系列标准
+
+    一个典型的PKI系统包括:
+        PKI策略
+        软硬件系统
+        证书机构CA
+        注册机构RA证书发布系统
+        PKI应用等
+
+     X.509，定义了证书的结构以及认证协议标准:
+        版本号
+        证书持有人的公钥、算法(指明密钥属于哪种密码系统)的标识符、以及其他相关的密钥参数。
+        证书的序列号
+        主题信息
+        证书的有效期
+        认证机构
+        发布者的数字签名
+        签名算法标识符    
+
+    证书类型：
+        证书授权机构的证书
+        服务器证书
+        用户证书
+
+    获取证书两种方法：
+        自签名的证书： 自已签发自己的公钥
+        使用证书授权机构：
+            生成证书请求（csr）
+            将证书请求csr发送给CA
+            CA签名颁发证书
+
+
+CA(Certificate Authority): 证书颁发机构，也成为"证书授权中心" 
+
+    CA机构颁发的证书都是 x.509 格式
+
+    CA证书验证公钥身份基本原理:
+        (1) CA 有自己的公钥和私钥，CA被用户信任，用户拥有CA的公钥
+        (2) 申请证书时, A 提供公钥, CA(通过hash算法)生成A的公钥的摘要, 再用CA的私钥加密摘要(数字签名),摘要和其它额外信息组成一起生成一个文件(简称证书,也叫数字证书),证书以文件形式颁发给A
+                私钥加密摘要这一动作称为"数字签名"
+                加密摘要生成的加密内容(内容包括加过密的摘要、申请者的公钥、版本号、序列号、签名算法、颁发者、有限期限等)就是"数字证书"   
+                存放数字证书的文件称为"证书文件"
+        (3) A用户和B用户通信，当B收到A的证书后，B会用CA的公钥去解密证书中的"加过密的摘要", 解密成功说明证书经过CA认证，身份真实可信.
+            接下来B会拿到证书中A的公钥和使用的hash算法，根据hash算法再次对A的公钥进行hash，得到的摘要和之前解密后得到的摘要进行对比，摘要一致说明公钥没有被破坏或篡改！
+        (4) 其它校验，比如证书是否过期等
+	    (5) 至此利用证书验证公钥身份完成
+
+    根CA和子CA以及用户之间的关系:
+        
+        互联网上有很多CA机构，这些机构和操作系统厂商合作，所以系统安装后就自带很多CA机构的根证书！
+            widows证书路径："Win+R" --> 输入"certmgr.msc" --> 受信任的根证书颁发机构 --> 证书.
+            inux证书路径："/etc/pki/ca-trust/"目录下的不同子目录对应不同的证书.
+
+        根CA并不会直接面对用户，子CA会向根CA申请授权，获取授权后子CA才有能力面对用户. 子CA向RootCA申请授权其实就是向根CA申请证书.
+            CA可以用多级子CA,但多数情况根CA只有一级子CA，子CA越多，证书链越长，认证效率就越.
+
+        证书链：
+            假如RootCA下面有一个子CA, 用户向子CA申请证书, 会得到两个证书, 1个是RootCA给CA1颁发的证书，1个是CA1给B颁发的证书。这两个证书B会配置到服务器！ 
+            用户访问服务器,拿到这两个证书,加上用户操作系统里面的根证书,形成完整的证书链.只有当整个证书信任链上的各个证书都有效时,浏览器才会认定证书有效和受信任
+
+    自签名证书: 因为CA已经是最权威的机构，所以根证书自己校验自己(自已签发自己的公钥)，像这样的证书叫做自签名证书，根证书就是自签名证书
+	    
+	    
+    私有CA: 由于向商业CA机构申请证书需要花费成本，企业内部可以创建私有CA，通过私有CA颁发公司内部服务器使用的证书，在一定程度上可以节约成本
+        建立私有CA有两种方案：
+		    OpenCA：OpenCA开源组织使用Perl对OpenSSL进行二次开发而成的一套完善的PKI免费软件
+		    openssl：相关包 openssl和openssl-libs , 通常用这种方案！
+	    搭建私有CA的服务器：
+		    所谓的搭建私有CA的服务器其实就是给自己颁发证书，根CA的证书是自己给自己颁发的自签名证书！
+		    私有CA搭建会用到一个证书配置文件"/etc/pki/tls/openssl.cnf"，这个文件约定了创建证书需要的相关文件、配置、包括证书相关的文件路径等！
+
+安全协议 SSL/TLS:
+    SSL被改名为TLS, 所以SSL和TLS是一个东西. SSL/TLS协议层位于应用层和传输层之间.SSL/TLS是个通用协议，具有通用功能，通常和应用层协议组合使用.
+	
+    SSL/TLS协议是个集成产品，由几个不同的小协议组成，实际加密过程很复杂.
+
+    SSL/TLS 协议功能：
+        机密性
+        认证
+        完整性
+        重放保护：相同的请求只能发送一次。重放保护是为了防范重放攻击(Replay Attacks)! 防范措施： 添加时间戳、添加流水号、添加随机数
+	 
+	SSL/TLS组成：
+        Handshake协议：包括协商安全参数和密码套件、服务器身份认证（客户端身份认证可选）、密钥交换
+        ChangeCipherSpec 协议：一条消息表明握手协议已经完成
+        Alert 协议：对握手协议中一些异常的错误提醒，分为fatal和warning两个级别：fatal类型错误会直接中断SSL链接; warning级别的错误SSL链接仍可继续，只是会给出错误警告.
+        Record 协议：包括对消息的分段、压缩、消息认证和完整性保护、加密等
+
+    SSL/TLS协议可以和各种各样的不加密协议 或 不安全的加密协议进行组合，让数据在网络上安全传输！比如：
+        http + SSL/TLS
+        ftp + SSL/TLS
+        mysql + SSL/TLS
+        ......
+
+HTTPS(HTTP over SSL 或 HTTP over TLS)协议:
+    单向验证和双向验证
+        单向验证：
+            客户端验证服务端(比如电商网站)
+            服务端验证客户端(比如银行网站)
+        双向验证：
+            客户端验证服务端，服务端也要验证客户
+
+    
+HTTPS 工作的简化过程
+	1). 客户端发起HTTPS请求
+		用户在浏览器里输入一个https网址，然后连接到服务器的443端口
+	2). 服务端的配置
+		采用HTTPS协议的服务器必须要有一套数字证书，可以自己制作，也可以向组织申请。区别就是自己颁发的证书需要客户端验证通过，才可以继续访问，
+		而使用受信任的公司申请的证书则不会弹出提示页面。这套证书其实就是一对公钥和私钥
+	3). 传送服务器的证书给客户端
+		证书里其实就是公钥，并且还包含了很多信息，如证书的颁发机构，过期时间等等
+	4). 客户端解析验证服务器证书
+		这部分工作是由客户端的TLS来完成的，首先会验证公钥是否有效，比如：颁发机构，过期时间等等，如果发现异常，则会弹出一个警告框，提示证书存在问题。
+		如果证书没有问题，那么就生成一个随机值。然后用证书中公钥对该随机值进行非对称加密(这个随机值实际上就是对称密钥)
+	5). 客户端将加密信息传送服务器
+		这部分传送的是用证书加密后的随机值，目的就是让服务端得到这个随机值，以后客户端和服务端
+		的通信就可以通过这个随机值来进行加密解密了
+	6). 服务端解密信息
+		服务端将客户端发送过来的加密信息用服务器私钥解密后，得到了客户端传过来的随机值
+	7). 服务器加密信息并发送信息
+		服务器将数据利用随机值进行对称加密,再发送给客户端
+	8). 客户端接收并解密信息
+		客户端用之前生成的随机值解密服务段传过来的数据，于是获取了解密后的内容
+
+
+==================================================================OpenSSL基本使用===============================================================
+
+OpenSSL
+
+    两种运行模式：交互模式(默认); 批处理模式;
+
+    OpenSSL包括三个组件:
+        libcrypto：用于实现加密和解密的库
+        libssl：用于实现ssl通信协议的安全库
+        openssl：多用途命令行工具，核心工具
+
+        rpm -qi openssl
+        rpm -ql openssl
+	
+    openssl命令对称加密 
+        openssl enc -e -des3 -a -salt -in test.sh -out test.sh.enc   # enc 对称加密; -e 加密; -des3 算法; -a base64编码(不编码加密结果是乱码); -salt加盐; in加密的文件; out加密后的文件
+        openssl enc -d -des3 -a -salt -in test.sh.enc -out test2.sh  # -d 解密           
+
+    openssl命令单向哈希加密
+        openssl md5 test.sh				# 等价于 openssl dgst -md5 test.sh
+        openssl sha512 test.sh			# 等价于 openssl dgst -sha512 test.sh
+        sha512sum test.sh               #  sha512sum 和 openssl sha512 效果一样
+
+    openssl 命令生成用户密码
+        openssl passwd -6	            # passwd 计算一个密钥的哈希值; -6表示使用sha512; -5表示sha256，-1表示MD5; 如果命令中不加盐，命令会自动加盐
+        grub-crypt		                # 交互式命令,centos6 生成sha512加密密码，centos7没有这个工具
+        python -c 'import crypt,getpass;pw="magedu";print(crypt.crypt(pw))'         #  利用Python程序在CentOS7 生成sha512加密密码     
+    
+    openssl命令生成随机数,这个功能生成随机口令(密码):
+        openssl rand -base64 9          # 生成9个字节的随机字符，并且生成后进行base64编码
+        openssl rand -hex 9             # 生成9个字节的随机字符，以十六进制形式显示，十六进制只能显示16个可见字符
+        cat /dev/urandom | tr -dc '[:alnum:]' | head -c12     # 其它方式 
+
+    	说明：	
+            "/dev/random" ：
+                会结合硬件信息，比如鼠标的位置、磁盘IO、磁头位置等随机生成随机数
+                假如机器没有任何磁盘操作、鼠标也没有动，就没有办法生成随机数，当使用的时候，随机数用尽，程序无法继续运行，就会阻塞程序的运行
+            "/dev/urandom"：
+                也会利用硬件生成随机数，随机数放在"熵池"中，"熵池"中存放了很多随机数，如果随机数用完，会利用软件生成伪随机数，不会阻塞程序的运行
+
+    生成私钥:
+        格式:
+            openssl genrsa -out /PATH/TO/PRIVATEKEY.FILE [-aes128] [-aes192] [-aes256] [-des3] [NUM_BITS,默认2048]	
+                genrsa 主要用于生成RSA私钥. 公钥隐藏在私钥内部，可以通过私钥得到公钥。但从公钥得不到私钥.
+                [-aes128] [-aes192] [-aes256] [-des3] 是用于加密私钥的对称密钥. 一旦对私钥加密，每次使用私钥都要输入口令
+                [NUM_BITS,默认2048]	 指定私钥位数, 位数越多，加密效果越强.
+        示例:
+            openssl genrsa -out app.key -des3 2048              # 指定了加密算法生成私钥时必须要提供加密密码, 不指定算法不用提供
+            openssl rsa -in app.key -pubout -out app.key.pub    # 从私钥中提取出公钥, 如果私钥有密码, 需要输入密码才能提取 
+            openssl rsa -in app.key -out app.key.key            # 相当于去除私钥的密码.然后从 app.key.key 中提取公钥不用再输入密码
+
+            (umask 066; openssl genrsa -out app2.key)           # 使用 umask 的方式给生成的私钥设置权限，也能保证私钥的安全
+
+
+==========================================================私有CA实现+用户证书申请+吊销证书========================================================
+
+交互式创建私有CA:
+    cat /etc/pki/tls/openssl.cnf            # 证书配置文件
+    ......省略
+    # Policies used by the TSA examples.   	# 策略版本
+    tsa_policy1 = 1.2.3.4.1
+    tsa_policy2 = 1.2.3.4.5.6
+    tsa_policy3 = 1.2.3.4.5.7
+
+    ####################################################################
+    [ ca ]									
+    default_ca      = CA_default            # The default ca section			# 一个主机上可以搭建多个CA，这里指定默认CA
+
+    ####################################################################
+    [ CA_default ]																# 默认CA相关设置
+    dir             = /etc/pki/CA           # Where everything is kept			# 存放和CA以及它颁发证书的所有相关文件的总目录,centos7默认有这个目录，centos8默认没有这个目录，需要自己创建
+    certs           = $dir/certs            # Where the issued certs are kept   # 这个目录放颁发的证书
+    crl_dir         = $dir/crl              # Where the issued crl are kept     # 证书吊销列表
+    database        = $dir/index.txt        # database index file.              # 存放所有颁发给用户的证书的索引数据库,给用户颁发的每个证书都有编号、功能、说明等信息.这个文件默认无,需提前创建,内容在颁发证书的时候会自动添加
+    #unique_subject = no                    # Set to 'no' to allow creation of
+                                            # several ctificates with same subject.
+    new_certs_dir   = $dir/newcerts         # default place for new certs.		# 颁发的新证书会自动放到这个目录
+    certificate     = $dir/cacert.pem       # The CA certificate				#  CA的自签名证书，需要创建
+    serial          = $dir/serial           # The current serial number
+    crlnumber       = $dir/crlnumber        # the current crl number            # 证书吊销列表的编号
+                                            # must be commented out to leave a V1 CRL
+    crl             = $dir/crl.pem          # The current CRL					# 证书吊销列表的文件
+    private_key     = $dir/private/cakey.pem# The private key					# CA的私钥	
+    RANDFILE        = $dir/private/.rand    # private random number file
+
+    x509_extensions = usr_cert              # The extentions to add to the cert
+
+    # Comment out the following two lines for the "traditional"
+    # (and highly broken) format.
+    name_opt        = ca_default            # Subject Name options
+    cert_opt        = ca_default            # Certificate field options
+
+    ......省略
+
+    default_days    = 365                   # how long to certify for           # 证书的默认有效期是365天，企业内部可以把时间设置长一些，比如十年。如果申请商业CA机构的证书，时间可以短以下，比如1年
+    default_crl_days= 30                    # how long before next CRL
+    default_md      = sha256                # use SHA-256 by default
+    preserve        = no                    # keep passed DN ordering
+
+    # A few difference way of specifying how similar the request should look
+    # For type CA, the listed attributes must be the same, and the optional
+    # and supplied fields are just that :-)
+    policy          = policy_match			# 设定当前用的策略
+
+    # For the CA policy	                    # 证书的匹配策略，作为CA来讲，将来给用户颁发证书，需要指定CA机构的相关信息  
+    [ policy_match ]                        # 私有(私有就是在一个区域内部)CA默认用此策略，只要是match的项，都必须保持一致，否则拒绝颁发证书. 非match项，可以不用保持一致！
+    countryName             = match			# CA所在的国家, 前三行 match 表示将来给CA和用户颁发证书，国家、州或省份、组织都要保持一致，因为私有CA认为CA所在的国家和使用证书的用户所在的国家应该是同一个国家. 
+    stateOrProvinceName     = match			# 州或省份
+    organizationName        = match			# (比如公司)
+    organizationalUnitName  = optional		# 部门
+    commonName              = supplied		# 给哪个组织使用
+    emailAddress            = optional		# 邮箱
+
+    # For the 'anything' policy
+    # At this point in time, you must list all acceptable 'object'
+    # types.
+    [ policy_anything ]                     # 这里的策略没有一项是match，这就相当于是公有CA策略，可以给任何国家的任何人颁发证书，没有限制！使用场景：商业合作伙伴、不同组织合作等
+    countryName             = optional
+    stateOrProvinceName     = optional
+    localityName            = optional		# 城市
+    organizationName        = optional
+    organizationalUnitName  = optional
+    commonName              = supplied
+    emailAddress            = optional
+    ......省略
+
+
+    tree /etc/pki/CA        # 根据openssl的配置创建目录以及权限，centos7自带这些目录，centos8需要手动创建这些目录"mkdir -p /etc/pki/CA/{certs,crl,newcerts,private}"
+    /etc/pki/CA
+    ├── certs
+    ├── crl
+    ├── newcerts
+    └── private
+
+
+    touch /etc/pki/CA/index.txt                 # index.txt 和 serial 文件，需要手动创建，否则给用户颁发证书的时候会报错
+    echo 01 > /etc/pki/CA/serial				# 注意：初始化值要写为十六进制格式，不能写为"echo 1 > /etc/pki/CA/serial"
+
+    (cd /etc/pki/CA/; umask 066; openssl genrsa -out private/cakey.pem 2048)    # 创建私钥,权限要设置的严格些.centos8创建私钥时默认权限就很严格,可以不用umask命令
+    openssl req -new -x509 -key /etc/pki/CA/private/cakey.pem -days 3650 -out /etc/pki/CA/cacert.pem    # 利用私钥创建CA自签名证书。CA证书的有效期时间要长些.如果CA证书过期，那么它颁发的所有证书都会过期
+        选项：
+            -new: 生成新证书签署请求
+            -x509：专用于CA生成自签证书
+            -key：生成请求时用到的私钥文件
+            -days：证书的有效期限
+            -out: 证书的保存路径
+        生成过程中需要输入的项:
+            ountry Name (2 letter code) [XX]:						# 国家代码,可以在 https://country-code.cl/ 中查询
+            State or Province Name (full name) []:                  # 填写所在州 / 省的完整名称, 必须填写全称(如 California、Guangdong),不能用缩写
+            Locality Name (eg, city) [Default City]:                # 填写城市或地区名称,使用英文填写城市名称.需填写全称(如 New York、Shanghai),不能用缩写
+            rganization Name (eg, company) [Default Company Ltd]:   # 填写组织的法律全称.如果是生成私有CA证书,这里使用唯一且描述性的名称,表明这是一个内部CA(如 Acme Corporation Internal CA).避免与公开信任的CA名称冲突(如 DigiCert、Let's Encrypt)
+            Organizational Unit Name (eg, section) []:              # 标识 CA 所属的部门或团队.如果是生成私有CA证书,这里使用描述性名称,表明负责管理CA的团队或职能(如 IT Security、DevOps).可填写技术部门、安全团队或项目名称
+            Common Name (eg, your name or your server's hostname) []:   # 如果是生成私有CA证书,这里必须使用CA的唯一名称.格式建议：[组织名称] Root CA 或 [项目名称] CA (如 Acme Corporation Root CA)。避免使用个人姓名或服务器域名(如 example.com),因为CA的CN不是用于直接访问的
+            Email Address []:                                       # 如果是生成私有CA证书,Email Address 字段用于提供 CA 管理员的联系邮箱
+
+    openssl x509 -in /etc/pki/CA/cacert.pem -noout -text            # 以文本方式显示证书内容. windows文件中查看证书更直观，但是需要把".pem"后缀改为"cer"或"crt"
+
+    openssl x509 -in /etc/pki/CA/cacert.pem -noout -dates           # 查看证书的有效期(签发日期和过期日期)
+
+    openssl x509 -in /etc/pki/CA/cacert.pem -noout -subject         # 查看subject
+
+    
+用户生成私钥和证书申请：
+
+    mkdir /data/nginx                   # 模拟给 nginx 服务申请证书
+    
+    (umask 066; openssl genrsa -out /data/nginx/nginx.key 2048)                 # 生成服务用的私钥
+    
+    openssl req -new -key /data/nginx/nginx.key -out /data/nginx/nginx.csr      # 生成证书请求文件,输入项要注意CA机构的策略,要知道哪些项必须要match到CA(就是这些字段的值要和CA的这些字段的值一样)
+        Country Name (2 letter code) [XX]:
+        State or Province Name (full name) []:
+        Locality Name (eg, city) [Default City]:             
+        Organization Name (eg, company) [Default Company Ltd]:填写组织的法律全称.使用英文填写(即使本地名称非英文,也建议使用英文译名或缩写);填写全称(如 Alibaba Group Holding Limited),避免简称(如 Alibaba).包含法律实体后缀(如 Ltd.、Inc.、Co.)
+        Organizational Unit Name (eg, section) []: OU用于组织内的部门或团队名称,若无明确的部门或团队可留空,建议尽量填写以便标识证书用途.可填产品线(如 Web Services)、项目名称(如 DevOps Team); OU也可帮助构建证书的逻辑层次,如 OU=IT Security 表示服务器证书,OU=Developers表示开发人员证书
+        Common Name (eg, your name or your server's hostname) []: 最重要的必填字段，用于指定证书的标识名称
+            (1) CN 的核心作用: 身份验证(CN 是客户端（如浏览器）验证证书的关键依据); 域名匹配(对于网站证书); 唯一性要求(同一 CA 签发的证书中，CN 必须唯一)
+            (2) 不同场景下的填写规则:
+                场景1: 网站/服务器证书, 填写服务器的域名或主机名 (需与访问时使用的域名完全一致).比如:访问网址 www.example.com; 内部服务器 api.internal.example.com; 泛域名证书 *.example.com(需 CA 支持)
+                场景2: 私有 CA 或根证书,填写 CA 的名称（非域名），通常包含 Root CA 或 CA 字样。
+                场景3: 客户端证书(如用户、设备),填写用户姓名或设备标识。用户证书, 如 John Doe 或 john.doe@example.com ; 设备证书, 如 iot-device-001 或 router.example.com
+                场景4: 邮件服务器证书,填写邮件服务器的域名（如 SMTP、IMAP 服务器）,如 smtp.example.com 、imap.example.com
+            现代替代方案：SAN(Subject Alternative Name)扩展,允许证书包含多个域名或 IP 地址，避免单一 CN 的限制。建议：优先使用包含 SAN 的证书，特别是多域名或 IP 场景。
+        Email Address []:
+        A challenge password []: 可选字段. 挑战密码不会存储在最终证书中，仅在 CSR 生成和 CA 验证过程中使用。某些传统CA(如 VeriSign)可能需要此密码, 但现代CA(如 Let's Encrypt)通常忽略该字段,也就是不需要此密码.
+            作用: 额外验证(挑战密码是一个可选的字符串，用于验证证书请求的合法性);CA交互(某些 CA 在签发证书时可能会要求提供此密码，作为二次验证);私有 CA 场景(内部使用的私有 CA 通常不需要此密码，可直接留空)
+            建议: 对于个人使用或小型项目，直接留空即可。或对此字段没有要求以及无兼容性问题,所有环境的所有项目都不填.
+        An optional company name []: 可选字段,补充组织信息.通常与 Organization Name (O) 字段配合使用. 可与 Organization Name 保持一致.若组织有复杂层级,可填写分支机构或部门名称.例如: O = Example Inc. 可选公司名称 = Example Beijing Branch. 
+            作用: 补充信息(提供额外的组织名称，通常与 Organization Name (O) 字段配合使用); CA要求(不同CA对该字段的处理方式不同,部分CA可能忽略此信息);兼容性(某些旧版系统或工具可能使用该字段,但现代TLS证书通常依赖 O 和 OU 字段)    
+            建议: 对于个人使用或小型项目，直接留空即可。或对此字段没有要求以及无兼容性问题,所有环境的所有项目都不填.
+
+    openssl ca -in /data/nginx/nginx.csr -out /etc/pki/CA/certs/nginx.crt -days 1000        # CA颁发证书，不指定有效期默认时间为365天,这个值来自于PKI文件中配置的值. 颁发的证书按照标准应该放在"/etc/pki/CA/certs/"目录下，也可以自定义路径.
+
+    tree /etc/pki/CA
+    /etc/pki/CA
+    ├── cacert.pem			# CA证书
+    ├── certs
+    │   └── nginx.crt		# 用户的证书文件
+    ├── crl
+    ├── index.txt
+    ├── index.txt.attr		# 文件中的"unique_subject"的值为yes，表示一个证书请求文件不能申请多个证书；值为no，表示可以申请多个证书
+    ├── index.txt.old		# "index.txt"文件的前一个版本备份
+    ├── newcerts
+    │   └── 01.pem			# 用户证书的备份文件
+    ├── private
+    │   └── cakey.pem		# CA私钥
+    ├── serial
+    └── serial.old			# "serial"文件的前一个版本备份
+
+
+    cat /etc/pki/CA/index.txt       # 用户证书的索引数据库
+    V       250823075104Z           01      unknown /C=CN/ST=GuangDong/O=Digital Cash Ltd/OU=business/CN=business.digitalcash.com/emailAddress=business@digitalcash.com   # V表示证书有效
+
+    cat /etc/pki/CA/serial
+    02                              # 表示下一个证书的编号就是02
+
+    openssl ca -status 01           # 验证指定编号对应证书的有效性
+
+    cp /etc/pki/CA/certs/nginx.crt /data/nginx/     # 模拟将生成的证书发给用户
+        
+    ll /data/nginx/
+    -rw-r--r-- 1 root root 4769 Nov 27 16:12 nginx.crt		# 用户证书文件.将文件导入到Windows中, 如果要在证书路径中看到上级CA证书(这里上级证书是根证书)的信息,需要将根证书导入到系统.如果是子CA颁发的,原理一样
+    -rw-r--r-- 1 root root 1102 Nov 27 15:50 nginx.csr		# 用户证书请求文件，一旦证书颁发成功，这个文件也就没有用了
+    -rw------- 1 root root 1675 Nov 27 14:27 nginx.key		# 用户私钥
+	
+
+    cat /etc/pki/CA/index.txt.attr   # 是否是同一个证书请求文件在申请证书的依据是"/etc/pki/CA/index.txt"文件,这个文件记录了已经颁发的证书的信息,包括countryName、stateOrProvinceName、organizationName、organizationalUnitName、commonName、emailAddress,如果值都一样说明用的同一个证书请求文件
+    unique_subject = yes             # 用一个证书请求文件申请多个证书时.yes 表示一个证书请求文件不能申请多个证书,no表示一个证书请求文件可以申请多个证书.  
+
+
+吊销证书：
+	openssl ca -revoke /etc/pki/CA/newcerts/01.pem       # 吊销证书, newcerts目录下的证书就是曾经颁发的证书,证书文件以证书编号命名
+	openssl ca -status 01                               # 可以看到证书已经被吊销
+
+	cat /etc/pki/CA/index.txt
+	R       250823075104Z   221127103750Z   01      unknown /C=CN/ST=GuangDong/O=Digital Cash Ltd/OU=business/......省略        # R说明这个证书已经被吊销
+
+
+生成证书吊销列表文件：
+    echo 01 > /etc/pki/CA/crlnumber				    # 吊销证书前同样需要先初始化一个编号，编号用以十六进制形式, 不能写为"echo 1 > /etc/pki/CA/crlnumber" 
+    openssl ca -gencrl -out /etc/pki/CA/crl.pem     # 注意：每吊销一个证书，都需要手动运行以下命令生成新的证书吊销列表文件
+	 
+	cat /etc/pki/CA/crlnumber                       # 每吊销一次证书，这个文件中的值都会在上一个值的基础上加1，表示下次吊销证书时就使用这一个编号
+	02
+	
+    cat /etc/pki/CA/crl.pem       # 将"crl.pem"放在Windows中后缀改为".crl"，双击打开就能可视化看到证书吊销列表详细信息.其中字段"CRL数字"对应的值就来源于"/etc/pki/CA/crlnumber"文件中的值,吊销时使用这个文件中的值，吊销完成后这个值在上个值的基础上加1,下次吊销证书时再用                
+
+
+====================================================================CA证书其它=================================================================
+
+非交互式创建CA根证书：
+    # 同时创建CA私钥和自签名CA根证书
+    openssl req -utf8 -x509 -new -nodes -newkey rsa:2048  -keyout cakey.pem -sha256 -days 3650 -subj "/C=CN/ST=Guangdong/L=Guangzhou/O=zkh Internal CA/OU=Devops/CN=zkh root CA/emailAddress=kkk_en@163.com" -out cacert.pem   
+            选项说明：
+            req：OpenSSL 的子命令，用于处理证书签名请求（CSR）或自签名证书。
+            -utf8：它的作用是确保在证书中能够正确处理 UTF-8 编码的特殊字符，像中文、日文等非 ASCII 字符就可以正常显示了。
+            -x509：此选项表明要生成一个自签名证书，而非创建证书签名请求（CSR）。-x509 是 OpenSSL 中用于生成自签名证书的核心选项。CA根证书通过自签名实现。
+            -new：创建一个新的证书请求或自签名证书。
+            -nodes：nodes 是 "no DES" 的缩写，意味着不对私钥进行加密。如果不使用这个选项，私钥在生成时会要求设置一个密码，之后每次使用私钥都需要输入该密码。
+            -newkey : 用于创建新私钥，通常在初始化时使用。后面跟指定算法
+            rsa:2048 ：指定使用 RSA 算法生成私钥，密钥长度为 2048 位。注意:1024 位的密钥安全性较低，在实际的生产环境中，建议使用 2048 位或更高长度的密钥。  
+            keyout: 生成的私钥
+            -sha256：使用 SHA-256 哈希算法对证书进行签名，这是目前推荐的安全哈希算法. OpenSSL 1.0.x 及更早版本,默认使用 SHA-1(不安全，已弃用); OpenSSL 1.1.x 及更高版本：默认使用 SHA-256.
+            -days ： 有效期，如果不指定有效期，也不会使用证书配置文件里面定义的有效期，这个证书的有效期默认只有一个月
+            -subj ：设置证书的主题信息
+            -out :生成的证书
+
+    # 根据已有的CA私钥创建自签名CA根证书
+    openssl req -utf8 -x509 -new -nodes -key cakey.pem -sha256 -days 3650 -subj "/C=CN/ST=Guangdong/L=Guangzhou/O=zkh Internal CA/OU=Decops/CN=zkh root CA/emailAddress=kkk_en@163.com" -out cacert.pem
+        选项说明：
+            -key：用于引用已有私钥，常见于签名或验证操作。
+            -x509 的核心功能是跳过证书签名请求（CSR）流程.普通证书生成需要两步：先创建 CSR（Certificate Signing Request），再由 CA（证书颁发机构）签名。而 -x509 允许直接生成一个自签名的 X.509 格式证书，无需中间 CSR 步骤。
+
+    其它: 
+        可以写在脚本中实现一条命令自动化生成私钥和证书，
+        自签名证书(这里说的自签名证书不是根证书)一般用于测试或内部系统，无法在公共互联网上获得信任。
+
+
+跨组织实现公有CA
+	
+	cat /etc/pki/tls/openssl.cnf
+	......省略
+	policy          = policy_match          # 如果颁发证书使用的是policy_match策略，那么证书请求文件中的countryName、stateOrProvinceName、organizationName字段就必须和根证书这三个字段保持一致.
+	
+	# For the CA policy
+	[ policy_match ]
+	countryName             = match
+	stateOrProvinceName     = match
+	organizationName        = match
+	organizationalUnitName  = optional
+	commonName              = supplied
+	emailAddress            = optional
+
+	# For the 'anything' policy
+	# At this point in time, you must list all acceptable 'object'
+	# types.
+	[ policy_anything ]                     # 如果要实现跨组织申请公有证书，只需要把 policy 的值设为 policy_anything
+	countryName             = optional      # 可以自行设定策略中的哪些字段是match，但是设置后，对应的证书请求文件中的相关字段就要匹配根证书的这些字段
+	stateOrProvinceName     = optional
+	localityName            = optional
+	organizationName        = optional
+	organizationalUnitName  = optional
+	commonName              = supplied
+	emailAddress            = optional
+	......省略
+
+
+centos7中可使用makefile生成自签名证书:
+    cd /etc/pki/tls/certs/              # 此目录下有makefile文件
+    make                                # 列出功能以及用法
+    make /data/httpd.crt                # 生成 key 和 证书
+    ll /data/httpd*                 
+
+    总结：
+        如果就一个服务需要证书,就可以不用搭建CA，直接给这个服务生成一个自签名证书
+        如果有多个服务，就有必要搭建私有私有CA，然后给不同的服务颁发证书  
+
+
+生成证书的标准流程:
+	1).创建私有CA：
+	2).客户端：
+		生成私钥文件(client.key)
+		基于私钥生成证书请求文件（.csr）
+		将证书请求文件（.csr）提交给证书颁发机构CA，CA对其进行“签名”（对提交的证书生成摘要，使用CA根证书对应的私钥进行加密），得到真正的签发证书（.cer或者.crt）
+	3).CA签署该请求，生成证书，再传给客户端
+	4).客户端拿到签发后的证书，根据需要再进行各种格式转换（.pem .p12 .jks等等）
+
+    

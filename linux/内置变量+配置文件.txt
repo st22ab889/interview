@@ -37,8 +37,8 @@ Autofs
 
 
 系统变量：
-    echo $PATH	
-    echo $SHELL
+    echo $PATH	    
+    echo $SHELL             # 查看当前用户使用的shell    
     echo $PS1               # PS1命令是linux系统中的一个全局变量，用于定义用户命令行的字符显示
     echo $PS2               # 影响多行重定向的提示信息
     echo $PS3               # Shell脚本中使用select时的提示符
@@ -53,7 +53,7 @@ Autofs
     /etc/sudoers
     /etc/hostname           # centos7及以上的主机名配置文件
     /etc/sysconfig/network  # centos6的主机名配置文件
-    /etc/shells
+    /etc/shells             # 查看主机支持哪些shell
     /etc/os-release			# Debian系（如Ubuntu）还是Red Hat系（如CentOS、Fedora）的Linux发行版，通常都会包含这个文件
     /etc/redhat-release		# CentOS and reahat
     /etc/centos-release     # 查看 centos 版本
@@ -176,6 +176,36 @@ Autofs
 	
     /var/log/syslog                                     # ubuntu日志文件的路径
 
+    /etc/ssh                                            # 每个安装ssh的主机都自带的公钥和密钥
+    /$user/.ssh/known_hosts                             # 保存的是服务器的公钥.客户端验证服务器身份.相当于客户端的 “服务器白名单”，防止中间人攻击。
+    /$user/.ssh/authorized_keys                         # 保存的是客户端的公钥.服务器验证客户端身份.相当于服务器的 “客户端白名单”，实现无密码登录。
+    /etc/ssh/sshd_config                                # 服务器端的配置文件
+    /etc/sudoers                                        # sudo授权配置文件
+    /var/log/secure                                     # sudo 日志文件 + 记录认证相关的日志(比如ssh登录失败)
+
+    /etc/chrony.conf						            # chrony(时间同步)配置文件
+    
+    /root/anaconda-ks.cfg                               # 应答文件
+
+    /etc/hosts
+
+    /boot/config-3.10.0-1160.el7.x86_64                 #  config文件记录的就是当前系统启用和没有启动哪些内核功能
+
+
+	/var/log/secure：系统安全日志，文本格式，应周期性分析。比如用户账号登录的日志，可以判断系统是否有安全风险
+	/var/log/btmp：当前系统上，用户的失败尝试登录相关的日志信息，二进制格式，lastb 命令进行查看，运行命令就自动读取btmp文件中的内容
+	/var/log/wtmp：当前系统上，用户正常登录系统以及重启的相关日志信息，二进制格式，last 命令可以查看，运行命令就自动读取wtmp文件中的内容
+	/var/log/lastlog:每一个用户最近一次的登录信息，二进制格式，lastlog 命令可以查看，运行命令就自动读取lastlog文件中的内容
+	/var/log/dmesg：
+		CentOS7 之前版本系统引导过程中的日志信息(包括硬件信息)，文本格式，开机后的硬件变化将不再记录
+		CentOS8 已经没有这个文件，使用专用命令 dmesg 查看，可持续记录硬件变化的情况，centos7也支持 dmesg 命令  
+	/var/log/boot.log：系统服务启动的相关信息，文本格式。可以看到就是开机启动打印出来的信息！
+	/var/log/messages ：系统中大部分的信息，包含主机日记以及很多服务的日志
+	/var/log/anaconda : 记录的是操作系统安装过程中发生的各种事件日志。anaconda 指的是 Red Hat/CentOS/Fedora 等 Linux 发行版的安装程序
+        /var/log/anaconda/packaging.log：记录安装过程中所有软件包的操作（如安装、卸载、依赖处理等），便于排查安装失败或异常问题
+        /var/log/anaconda/storage.log：划分存储的相关信息，包括 grub 的安装信息
+
+
 VNC:
     VNC 是在基于 UNIX 和 Linux 操作系统的免费的开源软件,远程控制能力强大,高效实用,其性能可以和 Windows 和 MAC 中的任何远程控制软件媲美。
     VNC 连接无界面系统时，可能只能看到命令行窗口，因为没有默认的桌面环境。如果需要运行图形界面程序，还需要安装相应的桌面环境，如 GNOME、KDE、XFCE 等，并进行相关配置。
@@ -214,5 +244,19 @@ PS4："set -x"显示脚本执行过程并将脚本内的变量的值暴露出来
     test.sh.5+ ls -l /etc/
     test.sh.5+ wc -l
     199	
+
+系统装好后就要完成以下工作后再安装各种应用服务
+    PAM的limit模块配置
+    内核参数
+    禁用selinux,不是每个公司都禁用 SELinux , ubuntu不用SELinux策略!
+    设置ntp服务
+    服务器装好配置后，到线上生产环境之前都要习惯性重启一次，上线后就不再重启，将持续运行很长时间！
+
+
+
+
+yum -y install bash-completion      # tab键补全包 
+
+
 
 

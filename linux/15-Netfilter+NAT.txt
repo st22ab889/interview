@@ -1,0 +1,1473 @@
+========================================================================概念====================================================================
+
+安全技术
+    入侵检测系统(Intrusion Detection Systems)
+    入侵防御系统(Intrusion Prevention System)
+    防火墙(FireWall)：把内外部网络进行隔离，
+    防水墙(Waterwall):与防火墙相对，是一种防止内部信息泄漏的安全产品
+
+
+防火墙的分类:
+    1.按保护范围划分:
+        主机防火墙(单机防火墙)
+        网络防火墙
+    2.按实现方式划分:
+        硬件防火墙: 有华为，山石hillstone,天融信，启明星辰，绿盟，深信服, PaloAlto , fortinet, Cisco, 等品牌.
+            公司一般都采用硬件防火墙，硬件防火墙里面的硬件(比如cpu等)都是针对网络流量做过优化的.硬件防火墙的系统也是基于linux系统，也就是在netfilter 模块上做了一些二次开发，比如web界面、协议的开发等！
+            防火墙涉及到性能消耗，所以防火墙一般都会标明能承受多大的流量或用户. 现在的防火墙产品一般具有综合总能，除了防火墙的功能外，还有一些附加功能，比如入侵检测、入侵防御等
+        软件防火墙: 如 Windows 防火墙 ISA，后改名为 ForefrontTMG，运行在 Windows server
+    3.按网络协议划分：
+        (1).网络层防火墙: 又称为包过滤防火墙，控制OSI模型下四层，控制的比较粗糙.
+            传输层：可以控制TCP，UDP，端口，这里就可以控制应用程序
+            网络层：可以控制IP
+            数据链路层：可以控制mac地址
+            物理层：不会在这层控制，因为都是二进制代码
+        (2).应用层防火墙/代理服务器：proxy 代理网关，控制OSI模型七层，比如协议中传的什么文件、什么资源都可以控制，但需要一层层拆包，所以效率比较低！ 应用层防火墙控制粒度细,功能丰富. 
+            
+        网络层防火墙和应用层防火墙比较：现实生产环境中所使用的防火墙一般都是二者结合体，即先检查网络数据，通过之后再送到应用层去检查
+            网络层防火墙：网络层对数据包进行选择，选择的依据是系统内设置的过滤逻辑，被称为访问控制列表（ACL），通过检查数据流中每个数据的源地址，目的地址，所用端口号和协议状态等因素，或他们的组合来确定是否允许该数据包通过
+                优点：对用户来说透明，处理速度快且易于维护
+                缺点：无法检查应用层数据，如病毒等
+            应用层防火墙： 应用层防火墙/代理服务型防火墙，也称为代理服务器（Proxy Server), 将所有跨越防火墙的网络通信链路分为两段，内外网用户的访问都是通过代理服务器上的“链接”来实现	
+                优点：在应用层对数据进行检查，比较安全
+                缺点：增加防火墙的负载
+
+
+===============================================================Netfilter+用户空间介绍============================================================
+
+
+Netfilter
+    Linux内核内置netfilter防火墙模块，实现了防火墙、nat、包的管理功能等！早期是独立模块，Linux 2.4.x之后集成在内核中，是linux内核的一个子系统。模块化设计(意味可增加、可删除)，具有良好的可扩充性，提供扩展各种网络服务的结构化底层框架. 
+    Netfilter在Linux上是标配的功能，无论什么版本都默认启用, 是非常重要的技术，比如虚拟化、容器、k8s等，都会接触到Linux防火墙！Netfilter与IP协议栈是无缝契合，并允许对数据报进行过滤(过滤就是拒绝不合规则的数据)、地址转换、处理等操作.
+    
+    需要借助用户空间的工具去配置管理linux内核中防火墙，常用的用户空间有：
+        iptables：centos6、7、8 和 Ubuntu 都支持。iptables目前是最主流的管理netfilter模块的工具。注意：iptables不是防火墙，仅仅是个命令！
+        firewalld：centos7、8提供.
+        ntf：centos8 提供. 
+        ufw(Uncomplicated Firewall)：Ubuntu 从 18.04 版本开始，默认使用 netfilter-persistent 和 ufw（Uncomplicated Firewall）作为防火墙管理工具，ufw 是对 iptables 的封装，简化了防火墙配置。
+            
+    说明:
+        iptables、firewalld、nftables 这三个工具只使用其中一个，因为功能相同，用两个或三个会冲突.
+        iptables、firewalld、nftables 都是调用的是Linux内核中的 Netfilter 提供的勾子函数(接口). 推荐使用 iptables！
+        
+    grep -m 10 NETFILTER /boot/config-3.10.0-1160.el7.x86_64       # config文件记录的就是当前系统启用和没有启动哪些内核功能 	
+    CONFIG_NETFILTER=y							# y 说明集成在内核中，也就是集成 vmlinuz 文件中
+	CONFIG_BRIDGE_NETFILTER=m					# m 说明是以模块方式提供，放在"/usr/lib/modules/{linux版本}/kernel/..."目录中
+
+
+netfilter 中五个勾子函数和报文流向
+    Netfilter在内核中选取五个位置放了5个勾子函数，分别为 INPUT、OUTPUT、FORWARD、PREROUTING、POSTROUTING. 这5个和防火墙密切相关的勾子函数实现非常强大的安全控制！
+    勾子函数就是系统预留了一些允许外部用户通过一些方法去间接引用调用的函数(一般的函数是系统内部使用，勾子函数是外部和内部都可以使用！)
+
+ 		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~		
+		/								------------------------	                              /
+		/								|		上层协议	   |                                   /
+		/								------------------------	                              /
+		/									↑				|                                     /
+		/									|				↓                                     /
+		/									|			  OUTPUT                                  /
+		/								  INPUT			  	|                                     /
+		/									↑				|                                     /
+		/									|		    路由判决(这里其实就是由路由表实现)           /
+		/									|				|                                     /
+		/    数据包入口					     |				 |				   数据包出口           /
+		/  ------------->PREROUTING---->路由判决-->FORWARD------->POSTROUTING ------------->       /
+		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~   
+
+    从 Linux kernel 4.2 版以后，Netfilter 在prerouting 前加了一个 ingress 勾子函数。可以使用这个新的入口挂钩来过滤来自第2层的流量，这个新挂钩比预路由要早，基本上是 tc 命令（流量控制工具）的替代品.   
+
+	三种报文流向
+		流入本机：PREROUTING(预路由) --> INPUT-->用户空间进程
+		流出本机：用户空间进程 -->OUTPUT--> POSTROUTING
+		转发：PREROUTING --> FORWARD --> POSTROUTING
+
+
+ (重要)iptables
+    iptables 命令用起来稍微繁琐，但是更贴近linux防火墙的工作过程和原理，所以掌握 iptables 命令的用法，就能理解Linux防火墙的工作过程！
+    iptables 工作在用户空间，用来编写规则，写好的规则被送往netfilter，告诉内核如何去处理信息包！
+
+    rpm -ql iptables
+	/usr/sbin/ip6tables						# 适用于ipv6
+	/usr/sbin/iptables						# 适用于ipv4，这个命令重要. 在Centos8上，是个软衔接指向 xtables-nft-multi，因为Centos8上用的工具是nft，但是命令之间的基本用法互相兼容
+	/usr/sbin/iptables-restore				# 重要命令
+	/usr/sbin/iptables-save					# 重要命令
+    ......
+
+    rpm -ql iptables | grep service         #  centos7、8都没有提供service文件，需要自己安装
+
+    dnf -y install iptables-services        # iptables只是一个用户空间工具，起作用的是内核中的 netfilter. iptables的service是否启动不决定netfilter有没有这个功能。iptables的service的作用是是否启动定义好的iptable规则
+
+
+firewalld
+    CentOS7开始引入的新的前端管理工具，firewalld也是定义防火墙规则，它定义的规则和iptables定义的规则，都可以影响用户的访问，相当于两个工具的功能一致！
+	功能一致会出现冲突，比如一个允许，一个拒绝。为了避免冲突，所以在centos7及以后并没有默认安装iptables的service，防止和firewalld冲突！
+	关闭firewalld的意思是不用系统自带的防火墙规则，但是可以用自己定义的规则，所以停掉firewalld的service，并不是说没有防火墙！
+	firewalld 实际上也是基于 iptables 的二次开发，相当于把 iptables 做了整合，用法更加简单方便，但不推荐使用，用 firewalld 会导致对linux防火墙的底层逻辑不太关注，
+	因为firewalld太简单了，简单到点点鼠标就能配置，这样会导致不关心底层逻辑，以及很难理解它的工作原理，将来遇到问题不好解决。所以建议用 iptables
+	
+	软件包：
+		firewalld
+		firewalld-config
+	
+	管理工具：
+		firewall-cmd 命令行工具
+		firewall-config 图形工作
+	
+	rpm -ql firewalld | grep service                        # 自带S service
+	/usr/lib/systemd/system/firewalld.service
+	
+    systemctl status firewalld.service                      # 关闭  firewalld.service，意味着当前规则没有启用，所有的linux内核里面默认的规则也没有启动
+
+
+nftables	
+	此软件是CentOS 8 新特性，也是属于 Netfilter 这个组织   
+
+
+======================================================================iptables=================================================================	
+
+
+iptables的组成
+    iptables 只是用户空间的一个工具，这个工具可以配合五表五链来定义各种规则！	
+
+	iptables由五个表(table)和五个链(chain)以及一些规则组成
+		五个表(从功能上区分)对应的是 filter、nat、mangle、raw、security
+		五个链对应的就是五个勾子函数，对应的名称(和勾子函数同名)为 INPUT,OUTPUT,FORWARD,PREROUTING,POSTROUTING
+	
+	iptables的五个表：只需掌握 filter 和 nat 表，其它表很少用
+		filter：过滤规则表，根据预定义的规则过滤符合条件的数据包,默认表。实现拒绝/允许功能！
+		nat：network address translation 地址转换规则表
+		mangle：修改数据标记位规则表。修改报文用，在数据包经过内核的时候，可能会修改里面的内容，比如给报文设置优先级！
+		raw：关闭启用的连接跟踪机制，加快封包穿越防火墙速度
+		security：用于强制访问控制（MAC）网络规则，由Linux安全模块（如SELinux）实现
+	
+    表和链对应关(这种关系并不固定，比如centos6和centos7上同一个表支持的链可能就有差异),每个表支持的链并不是完全一样：
+			filter：支持 INPUT,FORWARD,OUTPUT链
+			nat：	支持 INPUT,OUTPUT,PREROUTING,POSTROUTING 链
+			mangle：支持 INPUT,OUTPUT,FORWARD,PREROUTING,POSTROUTING 链
+			raw：	支持 PREROUTING、OUTPUT 链
+			security：支持 INPUT、FORWARD、OUTPUT 链
+
+	如果定义了冲突的规则，那么会根据优先级进行处理！优先级由高到低的顺序为：
+		security > raw > mangle > nat > filter
+	
+    iptables -t			                # 输入"-t"后按tab键列出来, 因为 raw 和 security 用的比较少，所以这里没有列出来，但其实是有的
+    filter  mangle  nat
+    
+    iptables  -L				        # 等价于 iptables -t filter -L ,查看 filter 表支持的链，因为 filter 表用的最多，所以 —L 默认就是列出 filter 表支持的链
+    Chain INPUT (policy ACCEPT)
+    target     prot opt source               destination
+    Chain FORWARD (policy ACCEPT)
+    target     prot opt source               destination
+    Chain OUTPUT (policy ACCEPT)
+    target     prot opt source               destination
+
+    iptables --help	
+
+
+iptables的基本用法
+    环境准备
+        CentOS 7，8：
+            systemctl stop firewalld.service
+            systemctl disable firewalld. service            # 等价 systemctl disable --now firewalld.service
+        CentOS 6：
+            service iptables stop
+            chkconfig iptables off
+    
+    iptables 命令入门
+        iptables -t filter -A INPUT -s 192.168.0.1 -j DROP
+            -t 表示指定表，filter 是默认表，所以可以省略"-t filter"
+            -A 表示 append，表示把规则追加到哪个链里(说明规则有顺序)
+            -s 表示 source，源地址。
+            -d 选项表示目标地址，适用于多网卡、多地址！如果只有一个网卡一个地址，又是使用的 INPUT 链，说明本机的这个地址就是目标地址，所以没必要使用"-d"
+            -j 表示jump，符合条件就把数据包丢给"动作"去处理，后面跟具体的动作，DROP 表示丢弃这个请求
+		
+    示例：在 1921.68.32.99 主机上添加规则
+        iptables -t filter -A INPUT -s 192.168.32.100 -j DROP 	        # 往 filter 表中的 INPUT 链添加一条规则，"filter"是默认表，所以可以省略" -t filter"
+        
+        iptables -vnL                                           # "-v"详细显示，"-n"数字化，"L"列出所有规则，"L"一定要放在最后！但分开写没关系，比如 "-L -n -v" 或  "-L -nv"     
+        Chain INPUT (policy ACCEPT 12 packets, 748 bytes)		# "policy ACCEPT"表示策略是 ACCEPT
+        pkts bytes target     prot opt in     out     source               destination
+            0     0 DROP       all  --  *      *       192.168.32.100       0.0.0.0/0	# 这是刚刚添加的规则，表示把来自 192.168.32.100 的包丢弃，也不回应任何数据包
+
+        Chain FORWARD (policy ACCEPT 0 packets, 0 bytes)		# "policy ACCEPT"表示策略是 ACCEPT，FORWARD链没有任何规则，表示允许任何连接
+        pkts bytes target     prot opt in     out     source               destination
+
+        Chain OUTPUT (policy ACCEPT 9 packets, 848 bytes)
+        pkts bytes target     prot opt in     out     source               destination
+        
+        
+        ping 192.168.32.99                                                  # 在"192.168.32.100"上ping "192.168.32.99"
+	    PING 192.168.32.99 (192.168.32.99) 56(84) bytes of data.
+	    ^C
+	    --- 192.168.32.99 ping statistics ---
+	    6 packets transmitted, 0 received, 100% packet loss, time 5015ms	# 总共发出了6个包，没有任何回应！
+	
+	
+	    iptables -vnL
+        Chain INPUT (policy ACCEPT 67 packets, 4212 bytes)
+        pkts bytes target     prot opt in     out     source               destination
+            6  1284 DROP       all  --  *      *       192.168.32.100       0.0.0.0/0			# 这里对应丢弃了6个数据包
+        ......
+	
+        
+        ssh  192.168.32.99                   # 在"192.168.32.100"上尝试使用ssh登录 "192.168.32.99".  ssh 走的tcp协议，会反复进行连接请求，越往请求之间隔的时间越长，一直到超时失败
+        ^C								    # 这里是按"CTRL + C" 主动结束
+        
+        iptables -vnL
+        Chain INPUT (policy ACCEPT 67 packets, 4212 bytes)
+        pkts bytes target     prot opt in     out     source               destination
+        12  1284 DROP       all  --  *      *       192.168.32.100       0.0.0.0/0			# 被丢弃包的数量都会被记录
+        ......
+	
+	
+        iptables -t filter -A INPUT -s 192.168.32.0/24 -j REJECT        # 再次往 filter 表中的 INPUT 链添加一条针对一个网段的规则。DROP 是不理睬，直接扔掉请求包，不回应！ REJECT 是拒绝，扔掉请求包，有回应！	
+	
+        ping 192.168.32.99                               # 在"192.168.32.100"上ping "192.168.32.99"，仍然没有回应
+	    PING 192.168.32.99 (192.168.32.99) 56(84) bytes of data.
+	    ^C
+
+        ping 192.168.32.99                                                   # 在"192.168.32.101"上ping "192.168.32.99"，有回应包，Unreachable 说明对方主机拒绝请求       
+        PING 192.168.32.99 (192.168.32.99) 56(84) bytes of data.
+        From 192.168.32.99 icmp_seq=1 Destination Port Unreachable
+	
+        iptables -vnL --line-numbers			    # "--line-numbers"表示显示详细的次序编号，次序决定了处理的次序，按首次匹配的规则处理，匹配后就不会再往下匹配规则！
+        Chain INPUT (policy ACCEPT 144 packets, 11536 bytes)
+        num   pkts bytes target     prot opt in     out     source               destination
+        1      119  9684 DROP       all  --  *      *       192.168.32.100       0.0.0.0/0 
+        2 		32 	4592 REJECT		all  --  *      *		192.168.32.0/24 	 0.0.0.0/0 		reject-with icmp-port-unreachable	
+
+        说明：
+            "reject-with icmp-port-unreachable"表示如果是icmp报文的包，就返回内容为"unreachable"这样的数据包！
+            iptables 有一个容易犯的错，设置的策略决绝了自己，导致不能通过ssh远程登录，定义规则的时候要小心这个风险！
+            生产中为了安全，有时候会故意定义一些只允许特定的人访问的规则，比如把自己的主机IP放在编号为1的规则上，策略设为 ACCEPT，这样就避免了自己的主机被拒绝
+	
+	iptables -t filter -I INPUT 1 -s 192.168.32.2 -j ACCEPT             # -I 表示insert，1 表示插入的位置，把规则插入到 INPUT 链上编号为1的位置
+		
+	iptables -vnL  --line-numbers
+
+    iptables -D INPUT 2		# 省略了"-t filter", 因为默认使用的就是 filter 表. 删除filter表中INPUT链的编号为2的规则, 之前编号为3的规则就变为2，依此类推！ -D 表示 Delete rule rulenum (1 = first) from chain
+	iptables -F INPUT		# 省略了"-t filter", 因为默认使用的就是 filter 表. 删除filter表中INPUT链的所有规则.	-F 表示 Delete all rules in  chain or all chains
+	iptables -F 			# 省略了"-t filter", 因为默认使用的就是 filter 表. 删除filter表中所有链的所有规则.
+
+
+Target(对数据包的处理动作),包括以下类型：
+
+    自定义链, ACCEPT， DROP， REJECT，RETURN, LOG，SNAT，DNAT，REDIRECT，MASQUERADE
+    
+        LOG：非中断target,本身不拒绝和允许,放在拒绝和允许规则前，并将日志记录在/var/log/messages系统日志中
+            --log-level level 		级别： debug，info，notice, warning, error, crit, alert, emerg
+            --log-prefix prefix 	日志前缀，用于区别不同的日志，最多29个字符
+
+        示例:
+            # 把"10.0.0.0/24"这个网段访问主机的新连接，并且访问的是80、21、22、23端口，就把访问记录在日志中，并且每条日志记录以 "new connections: "开头
+            iptables -I INPUT -s 10.0.0.0/24 -p tcp -m multiport --dports 80,21:23 -m state --state NEW -j LOG --log-prefix "new connections: "   
+
+    最常用的 target 有： ACCEPT， DROP， REJECT，LOG
+
+
+两种设置防火墙方式
+	白名单：只有明确指定的才能访问！实现白名单的方式会带来问题，会导致主机本身的地址都不可连接。一不小心，也会导致SSH客户端不能远程连接！
+	黑名单：拒绝明确指定的访问，其它都可以访问.黑名单没有白名单安全，因为黑名单范围宽泛，生产中安全较高的环境，建议使用白名单！
+
+    (不建议方式实现白名单)示例：在 1921.68.32.99 主机上添加规则
+        iptables -F 
+        iptables -vnL                       # 相当于 iptables -t filter -vnL
+        iptables -t filter -P INPUT DROP    # -P 表示改变整个链的策略，改变后，SSH马上失去和远程主机的连接
+        
+        iptables -vnL
+	    Chain INPUT (policy DROP 33 packets, 1948 bytes)		# 修改后 input 链的策略是 DROP，表示所有的连接都拒绝，在这种策略下添加的规则相当于白名单
+
+        ping 127.0.0.1                      # 因为 input 链的策略是 DROP，默认拒绝所有连接，所以 ping 主机自己的回环地址都失败
+        ping 192.168.32.99	                # ping主机自己的IP也失败
+
+        iptables -I INPUT 1  -i lo -j ACCEPT	# SSH不可用，所以需要直接在主机上操作. -I 插入一条规则, -i 表示接口(网卡), lo表示回环网卡, -j 处理动作
+        ping 127.0.0.1                      # 成功
+        ping 192.168.32.99                  # 成功. 192.168.32.99 这个IP是全局的,相当于也绑定了 127.0.0.1绑定的网卡,所以也能ping成功 
+        
+        ip a                            
+        1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+            link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+            inet 127.0.0.1/8 scope host lo					# "scope host"说明"127.0.0.1"这个IP不适用于全局范围, 所以这个IP只绑定在 lo 这块网卡
+        ......		
+        2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP group default qlen 1000
+            link/ether 00:0c:29:87:03:a1 brd ff:ff:ff:ff:ff:ff
+            inet 192.168.32.99/24 brd 192.168.32.255 scope global noprefixroute eth0	# "scope global"说明"192.168.32.99"这个IP适用于全局范围, 相当于既绑定在 eth0 这块网卡，也绑定在 lo 这块网卡！
+        ......
+
+        iptables -t filter -P INPUT ACCEPT
+        iptables -vnL    
+
+
+    (建议此方式实现白名单)示例：在 1921.68.32.99 主机上添加规则
+        iptables -A INPUT -s 192.168.32.1 -j ACCEPT     # 这三条命令实现了黑名单的效果，但又实现了白名单的效果.
+        iptables -A INPUT -i lo -j ACCEPT
+        iptables -A INPUT -j REJECT				        # 在整个规则的最后加一个拒绝所有，相当于全部拒绝，实现所谓的白名单功能，建议用这种方式添加规则
+    
+    
+        [root@localhost ~]#iptables -vnL --line-numbers
+        Chain INPUT (policy ACCEPT 0 packets, 0 bytes)
+        num   pkts bytes target     prot opt in     out     source               destination
+        1       97  5812 ACCEPT     all  --  *      *       192.168.32.1         0.0.0.0/0
+        2        0     0 ACCEPT     all  --  lo     *       0.0.0.0/0            0.0.0.0/0
+        3        1    76 REJECT     all  --  *      *       0.0.0.0/0            0.0.0.0/0            reject-with icmp-port-unreachable		
+        ......省略
+        
+        iptables -IINPUT 3 -s 192.168.32.0/24 -j ACCEPT          # 如果要添加规则就插入到最后规则的前面
+        
+        iptables -F                                               # 清除规则后，不影响自己能连  
+        iptables -vnL
+        Chain INPUT (policy ACCEPT 215 packets, 16956 bytes)
+        ......
+        
+        分析 iptables -A INPUT -s 192.168.32.1 -j ACCEPT , 假如 192.168.32.1 是个网关地址:
+            没有配置 SNAT, 网关在转发时，通常不会修改源 IP, 非 192.168.32.1 发过来的数据包都会被拒绝.
+            配置了SNAT, 网关会将源 IP 替换为自己的 IP（192.168.32.1），并记录端口映射关系。此时，目标主机收到的数据包源 IP 为 192.168.32.1，与防火墙规则匹配，请求会被放行。
+
+
+iptables 基本匹配条件：无需加载模块，由iptables/netfilter自行提供
+	[!] -s, --source address[/mask][,...]：源IP地址或者不连续的IP地址. 
+	[!] -d, --destination address[/mask][,...]：目标IP地址或者不连续的IP地址
+	[!] -p, --protocol protocol：指定协议，可使用数字如0（all）
+			protocol: tcp, udp, icmp, icmpv6, udplite,esp, ah, sctp, mh or“all“
+			参看：/etc/protocols
+	[!] -i, --in-interface name：报文流入的接口；只能应用于数据报文流入环节，只应用于INPUT、FORWARD、PREROUTING链
+	[!] -o, --out-interface name：报文流出的接口；只能应用于数据报文流出的环节，只应用于FORWARD、OUTPUT、POSTROUTING链
+
+    示例: 禁ping
+        iptables -A INPUT -s 192.168.32.101 -p icmp -j REJECT       # -p 指定协议,拒绝来自"192.168.32.101"的icmp报文(也就是ping).只是ping不通，仍然可以用其它网络协议连接，比如使用SSH登录这台主机
+
+    注: "[!]"中的"!"是取反的意思，表示除了这部分之外的那部分！
+
+
+======================================================================扩展模块==================================================================
+
+
+iptables扩展模块:
+
+	rpm -ql iptables | grep .so              # 每个so文件都是一个扩展的功能模块，要使用扩展功能模块，要指定模块名，并且要添加模块支持的选项  
+	/usr/lib64/xtables/libxt_socket.so       # 扩展模块位于 /usr/lib64/xtables/ 目录下
+	/usr/lib64/xtables/libxt_standard.so
+	/usr/lib64/xtables/libxt_state.so
+	/usr/lib64/xtables/libxt_tcp.so
+	/usr/lib64/xtables/libxt_time.so		# 这个模块就是通过时间进行空间
+
+    rpm -ql iptables | grep .so | wc -l     # 总共一百多个    
+
+	扩展模块的使用帮助：
+		CentOS 7,8: man iptables-extensions      # 扩展模块的查看帮助
+		CentOS 6: man iptables					# CentOS6上扩展模块的帮助没有独立出来                
+
+    扩展匹配条件：
+        隐式扩展:不需要使用"-m"指定模块名的扩展模块用法.使用"-m"显示指定也没有错！隐式扩展主要指的就是各种协议！比如"-p tcp", 而tcp协议本来就是一个模块，这相当于间接指定了模块
+        显式扩展：必须加"-m"指定模块
+
+
+隐式扩展
+
+	tcp 协议的扩展选项:
+		[!] --source-port, --sport port[:port]：匹配报文源端口,可为端口连续范围
+		[!] --destination-port,--dport port[:port]：匹配报文目标端口,可为连续范围
+		[!] --tcp-flags mask comp
+			mask 需检查的标志位列表，用,分隔 , 例如 SYN,ACK,FIN,RST
+			comp 在mask列表中必须为1的标志位列表，无指定则必须为0，用,分隔tcp协议的扩展选项
+	
+		iptables -A INPUT -s 192.168.32.101 -p tcp --dport 80 -j REJECT     # 拒绝"192.168.32.101"这台主机访问本机的80端口. "--dport"表示目标端口
+		iptables -A INPUT -s 192.168.32.101 -p tcp --dport 80:83 -j REJECT  # 拒绝"192.168.32.101"这台主机访问本机的 80、81、82、83 端口，如果拒绝的不是连续的端口，就只能单独写在每条规则中
+	 
+		
+		# 实现第一次握手的权限控制. 如果 SYN =1，ACK、FIN、RST为0，表示是第一次握手
+		--tcp-flags SYN,ACK,FIN,RST SYN		# 表示要检查的标志位为SYN,ACK,FIN,RST四个，其中SYN必须为1(单独写在最后)，余下的必须为0，说明是第一次握手
+		--syn		                        # 因为判断第一次握手的情况比较多，所以提供了等价的写法。"--syn" 等价于 "--tcp-flags SYN,ACK,FIN,RST SYN"
+		
+		# 实现第二次握手的权限控制 
+		--tcp-flags SYN,ACK,FIN,RST SYN,ACK		# 单独写在最后的标记位表示值为1，所以这里表示 SYN 和 ACK 为 1
+	
+		# TCP协议包6个标记位全为1或全为0，这种是不存在的，存在就是错误包
+		--tcp-flags ALL ALL			#  检测6个标记位全为1的包
+		--tcp_flags ALL NONE		#  检测6个标记位全为0的包
+
+
+	udp 协议的扩展选项
+		[!] --source-port, --sport port[:port]：匹配报文的源端口或端口范围
+		[!] --destination-port,--dport port[:port]：匹配报文的目标端口或端口范围
+
+
+	icmp 协议的扩展选项
+		[!] --icmp-type {type[/code]|typename}          # type/code , 0/0 echo-reply icmp应答, 8/0 echo-request icmp请求.
+				 
+		iptables -A INPUT -s 192.168.32.101 -p icmp --icmp-type 8 -j REJECT			#  "--icmp-type 8 -j REJECT"表示拒绝请求包，这就有方向性了！ 能ping对方主机，但对方主机不能ping这台主机.
+		iptables -A OUTPUT -d 192.168.32.100 -p icmp --icmp-type 0 -j REJECT		# "--icmp-type 0 -j REJECT" 表示拒绝给目标主机发出应答包！ 能ping对方主机，但对方主机不能ping这台主机；
+		iptables -A INPUT -s 192.168.32.101 -p icmp -j REJECT   # 对方主机和本主机不能互ping。因为 ping 对方时，对方回来的包也是icmp包；对方ping本机，直接也被拒绝！"-A INTPUT"表示往INTPUT链增加规则
+
+
+显式扩展: 显示扩展即必须使用-m选项指明要调用的扩展模块名称，需要手动加载扩展模块
+
+    multiport扩展：以离散方式定义多端口匹配,最多指定15个端口
+        [!] --source-ports,--sports port[,port|,port:port]...           # 指定多个源端口，端口不能指定太多，有个数要求
+        [!] --destination-ports,--dports port[,port|,port:port]...      # 指定多个目标端口，":"就是支持连续范围，从多少到多少
+        [!] --ports port[,port|,port:port]...                           # 多个源或目标端
+
+	    iptables -A INPUT -s 192.168.32.101 -p tcp -m multiport --dports 80,6379 -j REJECT  # 拒绝"192.168.32.101"主机访问本机80和6379端口
+
+
+    iprange扩展：指明连续的（但一般不是整个网络）ip地址范围
+	    [!] --src-range from[-to]                           # 源IP地址范围
+	    [!] --dst-range from[-to] 目标IP地址范围            # 目标IP地址范围
+
+	    iptables -A INPUT  -m iprange --src-range 192.168.32.5-192.168.32.10 -j DROP		#  拒绝 192.168.32.5 到 192.168.32.10 这6个IP访问本机，如果没指明网络协议，就是指所有网络协议
+
+	
+    mac扩展，mac 模块可以指明源MAC地址,，适用于：PREROUTING, FORWARD，INPUT 这三个链
+	    [!] --mac-source XX:XX:XX:XX:XX:XX          # mac 控制精确到了数据链路层. 如果目标mac不是本机，网卡直接就把包抛弃，交换机甚至都不会把数据包发给主机。所以没有目标mac选项
+
+	    iptables -A INPUT  -m mac --mac-source 00:50:56:12:34:56 -j ACCEPT          # 拒绝mac地址为"00:50:56:12:34:56"的主机访问本机
+
+
+    string扩展，对报文中的应用层数据做字符串模式匹配检测
+        --algo {bm|kmp} 字符串匹配检测算法
+            bm：Boyer-Moore
+            kmp：Knuth-Pratt-Morris
+        --from offset 开始偏移，因为真正的数据从应用层到数据链路层包了很多层，可以把这些定义协议本身的数据给跳过，然后开始检测
+        --to offset 结束偏移
+        [!] --string pattern 要检测的字符串模式
+        [!] --hex-string pattern要检测字符串模式，16进制格式
+	
+	
+	    从下图中可以看出之前经过前62个字节，才会设计用真正传输的数据：
+            |-----------------------------------------------------------------|-------------------------------------
+            |				frame 头										  |			application 头			   |
+            ------------------------------------------------------------------|-------------------------------------
+            | 8byte前导信息  | dest mac 6 byte | src mac 6 byte | type 2 byte | IP 20 | TCP 20 | http | data | FCS |
+            --------------------------------------------------------------------------------------------------------
+	
+	    iptables -A OUTPUT -p tcp --sport 80 -m string --algo bm --from 62 --string "12345" -j REJECT		# 因为请求里面不带"12345"这个字符串，返回的数据有可能带，所以需要在服务器的 OUTPUT 链上添加规则
+	
+
+    time扩展，根据将报文到达的时间与指定的时间范围进行匹配。注意：CentOS 8 此模块有问题
+        --datestart YYYY[-MM[-DD[Thh[:mm[:ss]]]]] 	# 日期
+        --datestop YYYY[-MM[-DD[Thh[:mm[:ss]]]]]
+        --timestart hh:mm[:ss] 						# 时间
+        --timestop hh:mm[:ss]
+        [!] --monthdays day[,day...] 				# 每个月的几号
+        [!] --weekdays day[,day...] 				# 星期几，1 – 7 分别表示星期一到星期日
+        --kerneltz									# 内核时区（当地时间），不建议使用，CentOS7 版本以上系统默认为 UTC. 注意：Centos6 不支持kerneltz ，--localtz 指定本地时区(默认)
+          
+        iptables -A INPUT -m time --timestart 22:00 --timestop 23:00 -j ACCEPT      # 每天的 22:00 到 23:00 不允许访问本机(注意：这个时间是UTC时间)。在centos8上运行这个命令会提示找不到time模块
+        date -u                                                                     # 打印出utc时间, 中国的时间减去8小时就是UTC时间
+	
+	
+    connlimit扩展，根据每客户端IP做并发连接数数量匹配，可防止Dos(Denial of Service，拒绝服务)攻击
+        --connlimit-upto N 		#连接的数量小于等于N时匹配
+        --connlimit-above N 	#连接的数量大于N时匹配
+	
+	    iptables -A INPUT -p tcp --dport 80 -m connlimit --connlimit-above 20 -j REJECT         #  如果对方主机发起的tcp连接超过20个，并且访问的是本机80端口，本机将会拒绝
+	
+	
+    limit扩展，基于收发报文的速率做匹配 , 令牌桶过滤器
+        --limit-burst number 					# 前多少个包不限制
+        --limit 								# [/second|/minute|/hour|/day]
+
+        iptables -I INPUT  -p icmp --icmp-type 8 -m limit --limit 10/minute --limit-burst 5 -j ACCEPT	# "--icmp-type 8"表示请求包.  限流，限制数据传输不要太快。icmp包是一秒发一个。下面的规则表示：前5个包不限流，之后每分钟允许通过10个包。
+        iptables -I INPUT 2 -p icmp -j REJECT				# 配合上面的规则一起使用，表示不满足上面的规则就直接拒绝
+	
+
+    (很重要)state扩展，state 扩展模块，可以根据"连接追踪机制(conntrack机制)"去检查连接的状态(追踪本机上的请求和响应之间的关系)，较耗资源
+	    state模块会把通讯的信息记录在内存中，会把网络通讯分为若干个状态！连接跟踪功能模块具有状态的检测功能，可以根据这些状态进行访问控制！
+	    连接跟踪功能模块其实就是记录访问主机的连接信息，所以它才可以根据状态进行控制！这里的状态和TCP协议的状态没有关系，这里仅仅表示网络的通讯状态，和TCP、UDP、ICMP没有任何关系！
+	
+        状态类型：
+            NEW：新发出请求；连接追踪信息库中不存在此连接的相关信息条目，因此，将其识别为第一次发出的请求。谁访问谁都可以，不管用什么协议，第一次的、单向的一个包发送到对方主机就算NEW！
+            ESTABLISHED：NEW状态之后，连接追踪信息库中为其建立的条目失效之前期间内所进行的通信状态。除了第一个包，后面的包都算 ESTABLISHED。比如A发给B是第一个包，A再次给B发个包 或 B回给A一个包，这个包就算ESTABLISHED
+            RELATED：新发起的但与已有连接相关联的连接，如：ftp协议中的数据连接与命令连接之间的关系。ftp会自动打开和某个端口相关的其它端口，这就是相关的连接
+            INVALID：无效的连接，如flag标记不正确。比如TCP协议中的6个标记位全为1或全为0都是错误的包
+            UNTRACKED：未进行追踪的连接，如：raw表中关闭追踪
+	
+        说明：
+            如果启用了连接跟踪功能模块，在内核里面有一个内存空间可以记录下来连接情况，对应会生成"/proc/net/nf_conntrack"文件，文件会记录连接信息！
+            系统重启，默认情况下连接跟踪功能模块没有加载，使用 iptables 指定 state 模块时(比如 "-m state --state")会自动加载state模块，不需要人为加载。
+            Centos6有个BUG，只要一运行iptables命令，比如"iptables -vnL"，就会自动加载 state 模块!
+	
+        示例: 实现老用户可以ping，新用户不可以ping
+            ping 192.168.32.99              # 在 192.168.32.100 主机上 ping 192.168.32.99  主机.  注意：这里要一直ping，不要停
+             
+            cat /proc/net/nf_conntrack      # 192.168.32.99  上无 nf_conntrack 文件生成
+            cat: /proc/net/nf_conntrack: No such file or directory
+            
+            iptables -A INPUT -m state --state ESTABLISHED -j ACCEPT            # 在 192.168.32.99 主机上添加规则
+            iptables -A INPUT -m state --state NEW -j REJECT
+                
+            iptables -vnL
+                
+            cat /proc/net/nf_conntrack              # 加载"state"模块后，"/proc/net/nf_conntrack"文件自动生产，里面记录的是旧的连接
+            ipv4     2 tcp      6 300 ESTABLISHED src=192.168.32.99 dst=192.168.32.1 sport=22 dport=50743 src=192.168.32.1 dst=192.168.32.99 sport=50743 dport=22 [ASSURED] mark=0 zone=0 use=2
+            ipv4     2 icmp     1 29 src=192.168.32.100 dst=192.168.32.99 type=8 code=0 id=1565 src=192.168.32.99 dst=192.168.32.100 type=0 code=0 id=1565 mark=0 zone=0 use=2
+            
+
+            ping 192.168.32.99           # 在 192.168.32.101 主机上 ping 192.168.32.99 主机，这里拒绝了远程主机，因为这台主机是新用户 
+            ping 192.168.32.99           # 在 192.168.32.100 主机上观察, 可以看到仍然能ping通, 停止后重新发起ping,不能ping通，因为这算一个新发起的请求  
+            
+
+            因为ssh登录远程主机一直在连，所以不会被拒绝。如果退出重新连接或新开一个窗口连接远程主机都会被拒绝！   
+            
+            iptables -F                  # 清除规则
+
+
+        示例：内核参数"/proc/sys/net/netfilter/nf_conntrack_max"
+            iptables -A INPUT -m state --state NEW -j ACCEPT     # 启用了连接跟踪功能模块，才会生成"/proc/sys/net/netfilter/nf_conntrack_max"这个文件
+        
+            cat /proc/sys/net/netfilter/nf_conntrack_max         # "nf_conntrack_max"是个很重要的内核参数，这个参数决定了连接跟踪最多有多少个记录       
+            65536				                                 # 默认只能记录65536条，生产中这个值偏小，当记录达到上线， 新用户的请求不能被记录，也无法建立连接！
+            
+            echo 1 >  /proc/sys/net/netfilter/nf_conntrack_max
+            cat /proc/sys/net/netfilter/nf_conntrack_max
+            1
+	
+            ping 192.168.32.100                                             
+		    PING 192.168.32.100 (192.168.32.100) 56(84) bytes of data.		# 不能ping通，处于一直等待的状态,因为对方主机的nf_conntrack_max改为了1
+		
+		    tail  /var/log/messages -f                                                      # 查看  192.168.32.100 的日志
+		    Dec  6 13:40:57 localhost kernel: nf_conntrack: table full, dropping packet		# 因为"nf_conntrack_max"文件中的值为1，只能记录1条连接记录
+            ......
+	
+		    echo 10 >  /proc/sys/net/netfilter/nf_conntrack_max      # 当把"/proc/sys/net/netfilter/nf_conntrack_max"文件中的值设大了，ping等待转变为ping通状态
+
+		
+            说明：	
+                (1)连接跟踪，需要加载模块： modprobe nf_conntrack_ipv4
+                    lsmod | grep conntrack                                  # lsmod 显示已载入系统的模块 
+                    nf_conntrack_ipv4      15053  0
+                    nf_defrag_ipv4         12729  1 nf_conntrack_ipv4
+                    xt_conntrack           12760  0
+                    nf_conntrack          139264  2 xt_conntrack,nf_conntrack_ipv4	    # 加载了此模块才支持连接跟踪功能，不用人为加载，只要调用state模块就会自动加载
+                    libcrc32c              12644  2 xfs,nf_conntrack
+                (2)当服务器连接多于最大连接数时dmesg 可以观察到"：kernel: ip_conntrack: table full, dropping packet"错误,并且导致建立TCP连接很慢。
+                (3)各种状态的超时后，链接会从表中删除
+                
+            
+            总结：
+                生产中启用了state模块，才会生成"nf_conntrack_max"文件，文件中的值决定了能记录多少条连接，超过就无法建立连接。
+                "nf_conntrack_max"文件中的值默认为65536，所以只能记录65536个连接，生产中这个值偏小，当记录达到上限，新用户的请求不能被记录，也无法建立连接！
+                centos6上要特别注意：只要一运行iptables命令，比如"iptables -vnL"，就会自动加载 state 模块，这个时候要检查"nf_conntrack_max"文件中的值！
+            
+            
+            (重要)连接过多的解决方法两个：
+                (1) 加大nf_conntrack_max 值
+                    vi /etc/sysctl.conf
+                    net.nf_conntrack_max = 393216
+                    net.netfilter.nf_conntrack_max = 393216
+                
+                (2) 降低 nf_conntrack timeout时间
+                    vi /etc/sysctl.conf
+                    net.netfilter.nf_conntrack_tcp_timeout_established = 300
+                    net.netfilter.nf_conntrack_tcp_timeout_time_wait = 120
+                    net.netfilter.nf_conntrack_tcp_timeout_close_wait = 60
+                    net.netfilter.nf_conntrack_tcp_timeout_fin_wait = 120
+                    iptables -t nat -L -n
+			
+
+        示例：192.168.32.100 主机能访问 192.168.32.99 主机，但 192.168.32.99 主机不能访问 192.168.32.100 主机
+            
+            iptables -A INPUT -s 192.168.32.99 -m state --state NEW -j REJECT       # 在 192.168.32.100 主机上设定如下规则
+
+
+        总结：
+            (1) 连接状态很有意义，可以判断是新用户还是老用户的连接，利用状态就能实现单向通讯！
+            (2) 只有启用了state模块,才会生成"/proc/net/nf_conntrack"、"/proc/sys/net/netfilter/nf_conntrack_max"这两个文件，当重启系统后，这两个文件就没了，需要重新加载连接跟踪模块。
+
+
+=====================================================================规则保存==================================================================
+
+
+规则优化最佳实践
+	1).安全放行所有入站和出站的状态为ESTABLISHED状态连接,建议放在第一条，效率更高。ESTABLISHED表示后续的连接，后续的连接如果存在说明是老用户，老用户应该设为允许
+	2).谨慎放行入站的新请求。新请求就算NEW状态的请求。
+	3).有特殊目的限制访问功能，要在放行规则之前加以拒绝。比如链上有一个时间规则，如果把时间规则放在后面，前面的规则匹配了就会放行，相当于时间规则没起作用
+	4).同类规则（访问同一应用，比如：http ），匹配范围小的放在前面，用于特殊处理。
+	5).不同类的规则(访问不同应用，一个是http，另一个是mysql)，匹配范围大的放在前面，效率更高	
+		-s 172.16.0.0/16 -p tcp --dport 80 -j REJECT	# 网段的访问量比单机访问量大，往前放就可以减少检查次数，效率会更高
+		-s 10.0.0.6 -p tcp --dport 3306 -j REJECT
+	6).应该将那些可由一条规则能够描述的多个规则合并为一条,减少规则数量,提高检查效率。因为规则越多，检查次数越多，效率也越低
+	7).设置默认策略，建议白名单(只放行特定连接),"iptables -P INPUT DROP"，不建议，容易出现“自杀现象”。规则的最后一条定义"拒绝所有的规则"做为默认策略，推荐使用
+		
+		
+iptables规则保存, 重启后规则不丢
+	
+    iptables命令定义的规则，如果不手动删除，其有限期限为kernel存活期限。也就是说一关机规则就消失！
+	
+    ll `which iptables-save`                        # iptables-save 是个二进制程序文件
+	lrwxrwxrwx. 1 root root 13 Aug 20  2021 /usr/sbin/iptables-save -> xtables-multi
+
+	
+	iptables -A INPUT  -m mac --mac-source 00:50:56:12:34:56 -j ACCEPT
+    
+    iptables-save                                   # iptables-save 并不会保存规则，只是把规则打印出来
+    ......
+	-A INPUT -m mac --mac-source 00:50:56:12:34:56 -j ACCEPT
+	......
+	
+    iptables-save > /root/iptables.rule         # 使用重定向保存规则
+	iptables -F                                 # 清空规则  
+    iptables-restore < /root/iptables.rule      # iptables-restore 把保存的规则重新加载到内存中，单独使用 iptables-restore 命令在等待输入，说明支持标准输入和重定向
+	iptables -vnL           #  可以看到规则又重新加载到内存中
+	
+	
+开机自动加载规则
+    方法1：
+        (1) 先把规则保存到一个文件中
+        (2) vim /etc/rc.d/rc.local1						# 开机会自动运行"/etc/rc.d/rc.local1"文件中的命令
+            iptables-restore < /PATH/RULE_FILE
+        (3) chmod +x /etc/rc.d/rc.local1
+	
+	方法2：
+        iptables -F                         # 清空规则
+        yum -y install iptables-services	# 安装 iptables-service，利用iptables.service实现规则的保存
+        
+        rpm -ql iptables-services
+        /usr/lib/systemd/system/iptables.service				# 利用这个文件保存规则
+        ......
+        
+        cat /usr/lib/systemd/system/iptables.service
+        [Unit]
+        ......
+        AssertPathExists=/etc/sysconfig/iptables				# 这个文件就是 iptables-services 的配置文件
+        [Service]
+        ......
+        ExecStart=/usr/libexec/iptables/iptables.init start		# 当 service启动时会运行这个文件，这个文件会自动加载 iptables-services 的配置文件
+        ......
+        
+        cat /etc/sysconfig/iptables                             # 这个文件存的就是系统自带的规则
+        ......
+        -A FORWARD -j REJECT --reject-with icmp-host-prohibited
+        COMMIT
+        
+        systemctl start iptables            # 启动 iptables-services    
+        iptables -vnL                       # 可以看到 iptables-services 默认就带的有规则 ，这些规则实际上就是从"/etc/sysconfig/iptables"这个文件中来的
+        
+        systemctl stop iptables             # 停止 iptables-services
+        iptables -vnL                       # 停止后自带的规则也没有启用了     
+        
+
+        iptables -A INPUT  -m mac --mac-source 00:50:56:12:34:56 -j ACCEPT      # 添加子的规则
+        iptables-save > /etc/sysconfig/iptables                                 # 覆盖自带的规则
+        cat /etc/sysconfig/iptables                                             # 这个文件中保存的内容就是自己定义的规则
+        iptables -F                                                             # 清空规则
+        systemctl start iptables
+        iptables -vnL                                # 这里的规则就是刚刚添加的规则，所以启动"iptables.services"其实就是从"/etc/sysconfig/iptables"这个文件中加载规则
+        systemctl enable iptables                    # 如果设为开机启动，那么重启开机就会自动加载"/etc/sysconfig/iptables"文件中定义的规则
+        iptables -F                                  # 清空规则，还原环境
+        iptables-save > /etc/sysconfig/iptables 
+
+汇总:
+	持久保存防火墙规则：
+		CentOS 7,8: iptables-save > /PATH/TO/SOME_RULES_FILE
+		CentOS 6: 	 service iptables save 						# 将规则覆盖保存至/etc/sysconfig/iptables文件中
+
+	加载防火墙规则：
+		CentOS 7,8 重新载入预存规则文件中规则：	
+			iptables-restore < /PATH/FROM/SOME_RULES_FILE
+		CentOS 6：
+			service iptables restart		                    # 会自动从/etc/sysconfig/iptables 重新载入规则
+	
+    开机自动重载防火墙规则：
+		方式1：用脚本保存各个iptables命令；让此脚本开机后自动运行，/etc/rc.d/rc.local 文件中添加脚本路径 /PATH/TO/SOME_SCRIPT_FILE
+		方式2：用规则文件保存各个规则，开机时自动载入此规则文件中的规则，在 /etc/rc.d/rc.local 文件添加 iptables-restore < /PATH/FROM/IPTABLES_RULES_FILE ,这种方式也使用于Ubuntu！
+		方式3：定义 Unit File, CentOS 7，8 可以安装 iptables-services 实现 iptables.service
+            yum -y install iptables-services
+            iptables-save > /etc/sysconfig/iptables
+            systemctl --now enable iptables.service	
+
+
+=====================================================================自定义链==================================================================
+	
+
+自定义链相当于自定义函数，可以把常用的功能定义成自定义链，然后可以用内置链调用自定义链！比如往INPUT链中添加很多规则，修改的时候就很不方便，利用自定义链可以把规则分类，相当于规则模块化，在 INPUT 链中就可以引用分类后的模块！
+
+链管理相关选项：
+    -N：new, 自定义一条新的规则链
+    -E：重命名自定义链；引用计数不为0的自定义链不能够被重命名，也不能被删除
+    -X：delete，删除自定义的空的规则链
+    -P：Policy，设置默认策略；对filter表中的链而言，其默认策略有：ACCEPT：接受, DROP：丢弃
+	
+示例:
+	iptables -N web-chain	            # 创建一个名为 web-chain 的自定义链！
+	iptables -E web-chain WEB-CHAIN	    # 重命名自定义链，名称一般大写，因为自带的内置链名称也是大写
+	
+	iptables -vnL			            # 创建自定义链后，默认就会把链加到 filter 表中
+	
+	iptables -A WEB-CHAIN -p tcp  -m multiport --dports 80,443 -j ACCEPT
+	iptables -A WEB-CHAIN -p tcp  -m multiport --dports 8080,9090 -j ACCEPT
+	
+	iptables -N DB-CHAIN	            # 创建自定义链后，默认就会把链加到 filter 表中
+	
+	iptables -A DB-CHAIN -p tcp  -m multiport --dports 3306,6379,11211 -j ACCEPT
+	
+	iptables -vnL			            #可以看到新添加的链以及链上的规则，这时还没有生效，自定义链需要关联到内置链，真正的勾子函数才会起作用！
+	
+	iptables -A INPUT -s 10.0.0.0/24 -j WEB-CHAIN		# 把 WEB-CHAIN 和 INPUT 关联在一起
+	iptables -A INPUT -s 10.0.0.100 -j DB-CHAIN			# 把 DB-CHAIN 和 INPUT 关联在一起
+	
+	iptables -vnL                           # 模块化思想管理大量规则非常方便，规则比较多用这种方式比较合理
+	iptables-save > /root/iptables.rule     # 同样可以保存规则
+	
+	iptables -F INPUT				# 清除INPUT链下面的规则。"iptables -F" 只会删除规则，包括自定义链的规则，但是不会删除自定义链
+	iptables -F WEB-CHAIN			# 清除WEB-CHAIN链下面的规则
+	iptables -X WEB-CHAIN			# 删除自定义链要满足两个条件：自定义链没有被内置链引用；自定义链下面没有规则
+	
+	systemctl start firewalld.service		# 在centos7上启用firewalld，就会发现定义了很多自定义链，并且关联到内置链！firewalld 底层用的还是 iptables
+	iptables -vnL
+
+
+========================================================================NAT====================================================================
+
+
+iptables实现网络防火墙, 工作中防火墙更多应用在保护整个网络。iptables/netfilter 利用 filter 表的 FORWARD 链,可以充当网络防火墙。
+	"请求-响应"报文均会经由FORWARD链，要注意规则的方向性
+	如果要启用conntrack机制，建议将双方向的状态为ESTABLISHED的报文直接放行
+	
+    示例：实现内网可以访问外网,但外网禁止访问内网
+
+        架构：
+            外部主机(eth0 仅主机) <<==========>> (eth1 仅主机)防火墙(eth0 NAT) <<==========>> (NAT)公司内部网络(主机1 eth0、主机2 eth0、......)
+        
+        环境：
+            防火墙，两块网卡：
+                eth0：NAT 	 10.0.0.8/24	 		接公司内部网络
+                eth1：仅主机 192.168.10.8/24		 接公司外部网络
+                注意：
+                    可以配网关，也可以不配网关
+                    VMware 可以添加网卡，然后和 VMware 提供的网络模式进行绑定，这是在 VMware 上操作！
+            
+            外部主机：模拟外部网络的主机
+                eth0：仅主机 192.168.10.100/24   	GW: 192.168.10.8	提供HTTP服务
+            
+            内部(Local)主机
+                主机1：eth0：NAT 10.0.0.7/24 	GW: 10.0.0.8	          提供http服务
+                主机2：eth0：NAT 10.0.0.17/24 	GW: 10.0.0.8		
+	
+        防火墙配置：
+            sysctl -a | grep ip_forward		# 列出所有的内核选项
+            
+            vim /etc/sysctl.conf
+            net.ipv4.ip_forward=1			# 开启 ipforward	
+        
+            sysctl -p						# 生效，因为直连网段路由自动生成，这时候外部主机和内部主机就能互联互通
+            
+            iptables -A FORWARD ! -s 10.0.0.0/24 -d 10.0.0.0/24  -m state --state NEW -j REJECT                 #  添加规则，实现内网可以访问外网，外网不能访问内网
+                "-A FORWARD" 表示使用 FORWARD 链，因为这里相当于转发，把数据从一个网络转到另一个网络
+                "! -s 10.0.0.0/24" 表示除了这个网段的地址，"!"表示取反
+                "-d 10.0.0.0/24" 表示目标网段
+                
+            curl 192.168.10.100 		# 内部网络主机 访问 外部网络主机，成功
+            curl 10.0.0.7				# 外部网络主机 访问 内部网络主机，失败
+            
+            iptables -I FORWARD ! -s 10.0.0.0/24 -d 10.0.0.7  -m state --state NEW -p tcp --dport 80 -j ACCEPT      # 追加规则，实现外部主机可以访问内部网络中的某一台主机
+            
+            curl 10.0.0.7 		# 外部网络主机 访问 内部网络"10.0.0.7"这台主机，成功
+            ping 10.0.0.17		# 外部网络主机 访问 内部网络"10.0.0.17"这台主机，失败
+            
+            
+            说明：
+                "外部主机访问内部网络"这种架构在生产中基本用不上，因为企业内部用的地址都不是真正能被互联网直接访问的地址，企业内部用的都是私网地址，如下：
+                    A类一个  10.0.0.0/8
+                    B类一个  172.[16-31].0.0/16 , 	总共16个网段, 用合并超网的方式合成一个大网来表示  172.16.0.0/12
+                    C类一个  192.168.[0-255].0/24, 	总共256个网段，用合并超网的方式合成一个大网来表示	192.168.0.0/16
+                这些网段是私有网络的原因是：这种地址都是在局域网中使用，互联网上不会有这种地址，也就是说互联网上根本就没有到达这些私有网络的路由！
+                
+        总结：	
+            这里的防火墙相当于具有了路由器功能，因为实现了把数据从一个网络转到另一个网络！这台模拟防火墙的主机相当于"路由器+防火墙"功能!	
+
+
+NAT(network address translation，网络地址转换): 支持PREROUTING，INPUT，OUTPUT，POSTROUTING四个链！
+
+
+NAT的实现分为下面类型：
+    SNAT：source NAT ，支持POSTROUTING, INPUT，让本地网络中的主机通过某一特定地址访问外部网络，实现地址伪装,请求报文：修改源IP
+    DNAT：destination NAT 支持PREROUTING , OUTPUT，把本地网络中的主机上的某服务开放给外部网络访问(发布服务和端口映射)，但隐藏真实IP,请求报文：修改目标IP
+    PNAT: port nat，端口转换，也称为"端口映射"
+
+
+NAT应用：
+	互联网上根本没有到达私有网络的路由，但是在企业和家庭中，用的都是私网地址，私有如何实现访问互联网？互联网如何访问私有地址？
+	
+	前提：
+		要实现私有网络和互联网访问，前提是自己也需要有公网地址，对于企业来讲，一般都是专线宽带，有固定的公网IP；
+		家庭宽带使用的是拨号网络，拨号网络不是专线，IP地址虽然是公网，但不固定，每次拨号地址会发生变化；
+	
+	私有网络中的主机访问互联网上的主机：
+		1) 对于发出去的请求，源地址(私网中的主机地址)会替换为自己的公网地址，如果端口在NAT表中已经被使用，会进行端口的转换，然后请求发给互联网
+		2) 当响应请求回来后，目标地址(自己的公网地址)和目标端口会根据NAT表的记录转换为私网中的主机地址和端口，请求回到主机
+	       此过程就是通过"SNAT + PNAT"实现，SNAT实现源地址的伪装，PNAT是端口的伪装,端口的伪装是为了区分私有网络中的主机!
+		
+	互联网上的主机访问私有网络中的主机：
+		1) 需要将公网地址和私有网络中提供服务的主机的IP进行映射，并且提供服务的主机的端口要固定映射！
+		2) 互联网过来的请求访问到自己的公网IP,这时请求的目标地址(自己的公网地址)和目标端口会根据NAT表的记录转换为私网中的主机地址和端口，主机就能接收请求
+		3) 私网中的主机响应请求，这时响应的目标地址(自己的公网地址)和目标端口会根据NAT表的记录转换为互联网主机的地址和端口，这样响应包就能回到公网主机
+		   此过程也是通过"NAT(SNAT+DNAT) + PNAT"实现，其实就是把访问公网地址的请求转发给私有网络中的主机，这个过程相当于代理！
+
+    防火墙和NAT：
+        内网要访问外网，需要在防火墙上配置 SNAT
+        外网要访问内网，需要在防火墙上配置 DNAT
+
+    现实生活中的网络通讯：
+        架构：
+            |--------------------NAT网络-------------------|------------------公网------------------|-------------------NAT网络-------------------|
+            |					                           |										|											  |
+            |<------私有网络------>|<-----NAT加IP转发----->|--------------公网路由转发--------------|<-----NAT加IP转发----->|<-----私有网络------>|
+            |                      |                       |                                        |                       |                     |
+            |私网主机<=======>(eth0私有地址)路由器(eth1公网地址)<=======>公网<***>公网<=======>(eth0公网地址)路由器(eth1私有地址)<=======>私网主机|
+            ---------------------------------------------------------------------------------------------------------------------------------------
+        说明：
+            在现实生活中，不管是客户端还是服务端，都在NAT网络中，都是通过NAT的方式在和对端互联网远程主机通讯！防火墙就具有路由功能！
+        参考资料：
+            防火墙的三种工作模式介绍（路由模式、透明模式（网桥）、混合模式）：https://blog.csdn.net/a_island/article/details/120491826
+
+    NAT 表 target:
+        SNAT: 实现的内网访问外网
+        DNAT: 实现的外网访问内网
+        REDIRECT: 通过改变目标IP和端口，将接收的包转发至同一个主机的不同端口 
+
+
+SNAT，配置SNAT,实现的是内网访问外网
+	
+	SNAT：基于nat表的target，适用于固定的公网IP
+		SNAT选项：
+			--to-source [ipaddr[-ipaddr]][:port[-port]]
+			--random
+	MASQUERADE：基于nat表的target，适用于动态的公网IP，如：拨号网络
+		MASQUERADE选项：
+			--to-ports port[-port]
+			--random
+    前提: 需要开启 ip_forward
+	格式：
+		如果是专线(公网IP固定)：
+			iptables -t nat -A POSTROUTING -s LocalNET ! -d LocalNet -j SNAT --to-source ExtIP
+			说明：
+				" -s LocalNET" 表示把局域网源地址替换为公网地址
+				"! -d LocalNet" 表示目标地址是非局域网地址，才将源地址替换为公网地址
+				"ExtIP" 表示公网地址
+		如果是拨号网络(公网IP不固定)：
+			iptables -t nat -A POSTROUTING -s LocalNET ! -d LocalNet -j MASQUERADE
+			说明：
+				MASQUERADE 表示当时拨号网络的公网地址是什么，就替换为什么。专线也可以用这个
+
+	 SNAT 选择 POSTROUTING 的原因:
+        POSTROUTING是数据包离开设备前的最后一个链,此时出口接口已确定(通过路由表)。SNAT需要将源IP转换为出口接口的IP(或指定 IP),若在更早的链(如PREROUTING)执行,可能因路由未确定导致转换后的IP无法匹配正确的出口
+
+	iptables -t nat -A POSTROUTING -s 10.0.0.0/24 ! –d 10.0.0.0/24 -j SNAT --to-source 172.18.1.6-172.18.1.9
+		"172.18.1.6-172.18.1.9" 表示 172.18.1.6 到 172.18.1.9 连续4个IP！
+        当"10.0.0.0/24"网段访问非"10.0.0.0/24"网段的时候，就将源地址替换为公网地址，公网地址可能有多个，多个用"-"连起来
+
+
+DNAT，配置DNAT,实现的是外网访问内网
+	DNAT：nat表的target，适用于端口映射，即可重定向到本机，也可以支持重定向至不同主机的不同端口，但不支持多目标，即不支持负载均衡功能
+	DNAT选项：
+		--to-destination [ipaddr[-ipaddr]][:port[-port]]
+    前提: 需要开启 ip_forward
+	DNAT 格式:
+		iptables -t nat -A PREROUTING -d ExtIP -p tcp|udp --dport PORT -j DNAT --to-destination InterSeverIP[:PORT]
+		说明：
+			"-d ExtIP" 表示访问的哪个公网地址，这里必需是专线固定的公网地址，拨号网络的公网IP是动态的，不固定的，所以不能写在这里
+			"--dport PORT" 表示访问的哪个端口
+			"--to-destination InterSeverIP[:PORT]"表示转发给内网的某个地址，如果不写端口，默认和"--dport"指定的端口一样
+	DNAT 选择 PREROUTING 的原因:
+       DNAT（目标网络地址转换）选择 PREROUTING 链的核心原因是需要在路由决策前修改目标 IP，确保数据包能被正确路由到内网服务器  	
+	
+
+REDIRECT 转发
+	REDIRECT，是NAT表的 target，通过改变目标IP和端口，将接收的包转发至同一个主机的不同端口，可用于PREROUTING、OUTPUT链
+	REDIRECT选项：
+		--to-ports port[-port]
+	注意: 无需开启 ip_forward
+	示例：
+		iptables -t nat -A PREROUTING -d 172.16.100.10 -p tcp --dport 80 -j REDIR  ECT --to-ports 8080          # 表示把"172.16.100.10"主机的80端口重定向到8080端口
+	
+	使用场景：当用户访问本地主机的某一个端口，如果这个端口不存在就重定向到存在的端口上，这就是端口重定向
+	
+	
+示例：SNAT、DNAT、REDIRECT
+	环境：
+		防火墙，两块网卡：
+			eth0：NAT 	 10.0.0.8/24	 		接公司内部网络
+			eth1：仅主机 192.168.10.8/24		接公司外部网络
+			注意：
+				可以配网关，也可以不配网关
+				VMware 可以添加网卡，然后和 VMware 提供的网络模式进行绑定，这是在 VMware 上操作！
+		
+		外部主机：模拟外部网络的主机
+			eth0：仅主机 192.168.10.100/24
+		
+		内部(Local)主机
+			主机1：eth0：NAT 10.0.0.7/24 	GW: 10.0.0.8	 提供http服务，80端口
+			主机2：eth0：NAT 10.0.0.17/24 	GW: 10.0.0.8	
+	
+	// "10.0.0.7"主机ping "192.168.10.100"，ping不通，因为没有路由，外部主机没有配置网关
+	ping 192.168.10.100		# 数据包可以到达"192.168.10.100"，但是响应的数据包回不来，因为没有配置网关，没有网关就没有路由
+	
+	// 防火墙上运行：
+	iptables -t nat -A POSTROUTING -s 10.0.0.0/24 ! -d 10.0.0.0/24 -j MASQUERADE		                # 实现SNAT
+	iptables -t nat -A PREROUTING -d 192.168.10.8 -p tcp --dport 80 -j DNAT --to-destination 10.0.0.7   # 实现DNAT,如果不指定端口，默认和"--dport"指定的端口一样
+	iptables -t nat -nvL
+	
+	测试 SNAT：
+		ping 192.168.10.100			# 10.0.0.7"主机ping "192.168.10.100", 成功ping通
+		tcpdump -i eth0 -nn icmp	# 在"192.168.10.100" 主机上抓包，可以发现请求来自"10.0.0.8"，这是因为防火墙做了地址转换。转换后"192.168.10.8"和"192.168.10.100"就在同一网段，不需要路由也能ping通
+	
+	测试 DNAT：
+		// 在"192.168.10.100"主机上访问内网主机 
+		curl 192.168.10.8 		# 当访问"192.168.10.8"时，会将请求转发给"10.0.0.7"
+		
+		// 在"10.0.0.7"主机上查看日志，可以看到请求来自"192.168.10.100"，因为DNAT可以看到客户端的真实地址
+		tail /var/log/httpd/access_log -f
+		
+		// 如果"10.0.0.7"主机的http服务端口变为8080，这时防火墙上的 DNAT 也要跟着变。
+		iptables -t nat -R PREROUTING 1 -d 192.168.10.8 -p tcp --dport 80 -j DNAT --to-destination 10.0.0.7:8080    # "-R 1"表示替换第一条规则，因为DNAT这条规则当前次序为1
+		
+		// 当访问"192.168.10.8"的80端口，请求就会转发给内网"10.0.0.7"主机的8080端口
+		curl 192.168.10.8 
+		
+	测试 REDIRECT：
+		// 如果"10.0.0.7"主机的http服务端口变为9090，这时不能老改防火墙，因为防火墙一般由专业的网络工程师管理，不是想怎么改就怎么改. 在"10.0.0.7"主机上添加如下规则：
+		iptables -t nat -A PREROUTING -d 10.0.0.7 -p tcp --dport 8080 -j REDIRECT --to-ports 9090		#本地主机端口重定向
+		
+		//当访问"192.168.10.8"的80端口，请求就会转发给内网"10.0.0.7"主机的8080端口，根据规则，内网主机又会把8080端口重定向到9090端口，最终成功访问 
+		curl 192.168.10.8 
+		
+	注意：
+		"192.168.10.8"主机并不监听80端口，因为 iptables 本质上用的是内核的功能，内核没有监听端口的说法，只有用户空间的应用程序才监听端口，内核虽然没有监听端口，但确实也能处理请求
+		
+
+=====================================================================firewalld=================================================================
+
+(了解)firewalld
+    是CentOS 7.0新推出的管理netfilter的用户空间软件工具,也被ubuntu18.04版以上所支持(apt install firewalld安装即可)
+    是配置和监控防火墙规则的系统守护进程，支持划分区域zone,每个zone可以设置独立的防火墙规则，可以实现 iptables,ip6tables,ebtables的功能.由firewalld包提供
+
+归入zone顺序：
+    先根据数据包中源地址，将其纳为某个zone
+    纳为网络接口所属zone
+    纳入默认zone，默认为public zone,管理员可以改为其它zone
+    网卡默认属于public zone, lo网络接口属于trusted zone
+
+firewalld zone 分类
+    zone名称	|	默认配置
+    --------------------------------------------------------------------------------------------------------------------------
+    trusted		|	允许所有流量
+    home		|	拒绝除和传出流量相关的，以及ssh,mdsn,ipp-client,samba-client,dhcpv6-client预定义服务之外其它所有传入流量
+    internal	|	和home相同
+    work		|	拒绝除和传出流量相关的，以及ssh,ipp-client,dhcpv6-client预定义服务之外的其它所有传入流量
+    public		|	拒绝除和传出流量相关的，以及ssh,dhcpv6-client预定义服务之外的其它所有传入流量，新加的网卡默认属于public zone
+    external	|	拒绝除和传出流量相关的，以及ssh预定义服务之外的其它所有传入流量，属于
+    external 	|	zone的传出ipv4流量的源地址将被伪装为传出网卡的地址。
+    dmz			|	拒绝除和传出流量相关的，以及ssh预定义服务之外的其它所有传入流量
+    block		|	拒绝除和传出流量相关的所有传入流量
+    drop		|	拒绝除和传出流量相关的所有传入流量（甚至不以ICMP错误进行回应）
+
+
+预定义服务，除了下面列出的，还有很多，比如dhcp、http、ftp等
+    服务名称	  |  配置
+    --------------------------------------------------------------------------------------------------------------------------
+    ssh			  |  Local SSH server. Traffic to 22/tcp
+    dhcpv6-client |  Local DHCPv6 client. Traffic to 546/udp on the fe80::/64 IPv6 network
+    ipp-client	  |  Local IPP printing. Traffic to 631/udp.
+    samba-client  |  Local Windows file and print sharing client. Traffic to 137/udp and 138/udp.
+    mdns		  |  Multicast DNS (mDNS) local-link name resolution. Traffic to 5353/udp to the 224.0.0.251 (IPv4) or ff02::fb (IPv6) multicast addresses.
+
+
+firewalld预定义服务配置
+    firewall-cmd --get-services             # 查看预定义服务列表
+    ll /usr/lib/firewalld/services/*.xml    # 预定义服务的配置
+
+
+firewalld 三种配置方法
+    firewall-config 图形工具: 需安装 firewall-config包
+    firewall-cmd 命令行工具: firewalld包,默认安装
+    /etc/firewalld/ 配置文件，一般不建议,如:/etc/firewalld/zones/public.xml
+
+
+firewall-cmd 命令
+    Usage: firewall-cmd [OPTIONS...]
+        --get-zones 				列出所有可用区域
+        --get-default-zone 			查询默认区域
+        --set-default-zone=<ZONE> 	设置默认区域
+        --get-active-zones 			列出当前正使用的区域
+        --add-source=<CIDR>[--zone=<ZONE>] 		添加源地址的流量到指定区域，如果无--zone= 选项，使用默认区域
+        --remove-source=<CIDR> [--zone=<ZONE>] 	从指定区域删除源地址的流量，如无--zone= 选项，使用默认区域
+        --add-interface=<INTERFACE>[--zone=<ZONE>] 		添加来自于指定接口的流量到特定区域，如果无--zone= 选项，使用默认区域
+        --change-interface=<INTERFACE>[--zone=<ZONE>] 	改变指定接口至新的区域，如果无--zone=选项，使用默认区域
+        --add-service=<SERVICE> [--zone=<ZONE>] 		允许服务的流量通过，如果无--zone= 选项，使用默认区域
+        --add-port=<PORT/PROTOCOL>[--zone=<ZONE>] 		允许指定端口和协议的流量，如果无--zone= 选项，使用默认区域
+        --remove-service=<SERVICE> [--zone=<ZONE>] 		从区域中删除指定服务，禁止该服务流量，如果无--zone= 选项，使用默认区域
+        --remove-port=<PORT/PROTOCOL>[--zone=<ZONE>] 	从区域中删除指定端口和协议，禁止该端口的流量，如果无--zone= 选项，使用默认区域
+        --reload 						删除当前运行时配置，应用加载永久配置
+        --list-services 				查看开放的服务
+        --list-ports 					查看开放的端口
+        --list-all [--zone=<ZONE>] 		列出指定区域的所有配置信息，包括接口，源地址，端口，服务等，如果无--zone= 选项，使用默认区域
+
+    示例：临时修改规则
+        systemctl start firewalld				# 默认用的是 public zone 
+        iptables -vnL
+        firewall-cmd --get-zones 				# 列出所有可用区域
+        firewall-cmd --get-default-zone 		# 查询默认区域
+        firewall-cmd --set-default-zone=block 	# 设置默认区域为block
+        firewall-cmd --list-services 			# 查看当前允许的服务列表
+        firewall-cmd --add-service=http			# 允许http服务的流量通过，如果无 --zone= 选项，使用默认区域
+        firewall-cmd --remove-service=http		# 从区域中删除http服务，禁止该服务流量，如果无 --zone= 选项，使用默认区域
+        firewall-cmd --get-service				# 列出当前系统中支持的所有service
+        
+        
+    示例：永久保存规则并立马生效	
+        firewall-cmd --set-default-zone=dmz		                                    # 默认zone设为dmz
+        firewall-cmd --permanent --zone=internal --add-source=192.168.0.0/24		# 在internal zone中增加源地址192.168.0.0/24的永久规则
+        firewall-cmd --permanent --zone=internal --add-service=mysql				# 在internal zone中增加协议mysql的永久规则
+        firewall-cmd --reload					                                    # 加载新规则以生效
+
+
+firewall 图形化操作：
+    yum -y install firewall-config 	# 安装图形化工具
+    在window上使用xmanager打开
+    export DISPLAY=windowIP:xmanager窗口编号
+    firewall-config
+    
+    
+当基本firewalld语法规则不能满足要求时，可以使用以下更复杂的规则
+    rich-rules: 富规则，功能强,表达性语言
+    Direct configuration rules: 直接规则，灵活性差。 
+        man 5 firewalld.direct
+
+管理rich规则	
+	rich规则比基本的firewalld语法实现更强的功能，不仅实现允许/拒绝，还可以实现日志syslog和auditd，也可以实现端口转发，伪装和限制速率
+	
+	查看帮助：
+		man 5 firewalld.richlanguage
+	
+	规则实施顺序：
+		该区域的端口转发，伪装规则
+		该区域的日志规则
+		该区域的允许规则
+		该区域的拒绝规则
+	
+    每个匹配的规则生效，所有规则都不匹配，该区域默认规则生效
+	
+	rich语法：
+		rule
+			[source]
+			[destination]
+			service|port|protocol|icmp-block|masquerade|forward-port
+			[log]
+			[audit]
+			[accept|reject|drop]	
+	
+	rich规则选项：
+				选项			描述
+		----------------------|------------------------------------------------------------------------------------------
+		--add-rich-rule=''	  |	Add to the specified zone,or the default zone if no zone is specified.
+		--remove-rich-rule='' | Remove to the specified zone,or the default zone if no zone is specified.
+		--query-rich-rule=''  |	Query if has been added to the specified zone,or the default zone if no zoneis specified.Returns 0 if the rule is present,otherwise 1.
+		--list-rich-rules	  | Outputs all rich rules for the specified zone,or the default zone if no zone isspecified.
+
+
+	示例：
+		//拒绝从192.168.0.100过来的所有流量，当 address 选项使用 source 或 destination 时，必须用family= ipv4|ipv6
+		firewall-cmd --permanent --zone=public --add-rich-rule='rule family=ipv4 source address=192.168.0.100/32 reject'
+		
+		// 限制每分钟只有两个连接到ftp服务，实现限流功能
+		firewall-cmd --add-rich-rule=‘rule service name=ftp limit value=2/m accept’
+		
+		// 抛弃esp（ IPsec 体系中的一种主要协议）协议的所有数据包，esp是和加密有关的协议
+		firewall-cmd --permanent --add-rich-rule='rule protocol value=esp drop'		# 拒绝所有esp协议
+	
+		// 接受所有192.168.1.0/24子网端口5900-5905范围的TCP流量
+		firewall-cmd --permanent --zone=vnc --add-rich-rule='rule family=ipv4 source address=192.168.1.0/24 port port=5900-5905 protocol=tcp accept'
+		
+		
+	rich日志规则：
+		log [prefix="<PREFIX TEXT>" [level=<LOGLEVEL>] [limit value="<RATE/DURATION>"]
+		说明：
+			<LOGLEVEL> 可以是emerg,alert, crit, error, warning, notice, info, debug.
+			<DURATION> s：秒, m：分钟, h：小时, d：天
+			audit [limit value="<RATE/DURATION>"]
+	
+		示例：
+			//接受ssh新连接，记录日志到syslog的notice级别，每分钟最多三条信息
+			firewall-cmd --permanent --zone=work --add-rich-rule='rule service name="ssh" log prefix="ssh " level="notice" limit value="3/m" accept'
+			
+
+伪装和端口转发
+	NAT网络地址转换，firewalld支持伪装和端口转发两种NAT方式
+	
+	伪装NAT：相当于 iptables中的 SNAT
+		firewall-cmd --permanent --zone=<ZONE> --add-masquerade
+		firewall-cmd --query-masquerade 							# 检查是否允许伪装
+		firewall-cmd --add-masquerade 								# 允许防火墙伪装IP
+		firewall-cmd --remove-masquerade 							# 禁止防火墙伪装IP
+	
+		示例：rich规则的伪装NAT
+			firewall-cmd --add-rich-rule='rule family=ipv4 source address=192.168.0.0/24 masquerade'
+
+	端口转发：将发往本机的特定端口的流量转发到本机或不同机器的另一个端口。通常要配合地址伪装才能实现。相当于 iptables中的 DNAT
+		格式：
+			firewall-cmd --permanent --zone=<ZONE> --add-forward-port=port=<PORTNUMBER>:proto=<PROTOCOL>[:toport=<PORTNUMBER>][:toaddr=]
+		说明：toport= 和toaddr= 至少要指定一个
+		
+		示例：
+			// 转发传入的连接9527/TCP，到防火墙的80/TCP到public zone 的192.168.0.254
+			firewall-cmd --add-masquerade 	#启用伪装
+			firewall-cmd --zone=public --add-forward-port=port=9527:proto=tcp:toport=80:toaddr=192.168.0.254
+		
+		
+		rich规则的port转发语法：
+			forward-port port=<PORTNUM> protocol=tcp|udp [to-port=<PORTNUM>] [to-addr=<ADDRESS>]
+		
+		示例：
+			#转发从192.168.0.0/24来的，发往80/TCP的流量到防火墙的端口8080/TCP
+			firewall-cmd --zone=work --add-rich-rule='rule family=ipv4 source address=192.168.0.0/24 forward-port port=80 protocol=tcp to-port=8080'
+			firewall-cmd --permanent --add-rich-rule 'rule family=ipv4 source address=172.25.X.10/32 forward-port port=443 protocol=tcp to-port=22'
+			firewall-cmd --reload
+			ssh -p 443 serverX.example.com			
+
+
+========================================================================nft====================================================================
+
+
+ntf：
+    简介：
+        nftables 是一个 netfilter 项目，旨在替换现有的{ip,ip6,arp,eb}tables 框架，为{ip,ip6}tables提供一个新的包过滤框架、一个新的用户空间实用程序(nft)和一个兼容层。
+        它使用现有的钩子、链接跟踪系统、用户空间排队组件和 netfilter 日志子系统。nftables 主要由三个组件组成：内核实现、libnl netlink 通信和 nftables 用户空间。
+        其中内核提供了一个 netlink 配置接口以及运行时规则集，libnl 包含了与内核通信的基本函数，用户空间可以通过 nft 和用户进行交互。
+		
+	nft简单解释：
+		nft	是用户空间工具，可以替代 iptables 以及其它防火墙工具，功能更加丰富。
+		nft 基于较新内核实现新功能，原因是新底层内核的工作原理和工作框架已经有一些变化，
+		以前的 iptables、ip6tables、arptables、ebtables 框架是独立的，各有各的框架和工具，ntf把这些框架统一起来，用ntf统一管理，ntf相当于是集成工具
+		在 Linux 内核版本高于 3.13 时可用。提供一个新的命令行工具 nft，语法与 iptables 不同。centos7的内核版本是"3.10.0"，所以centos7不支持nft
+	
+	nft 相关概念
+		nftables 和 iptables 一样，由表（table）、链（chain）和规则（rule）组成，其中表包含链，链包含规则，规则是真正的 action，
+		规则由地址，接口，端口或包含当前处理数据包中的其他数据等表达式以及诸如drop, queue, continue等声明组成。
+	
+	与 iptables 相比，nftables 主要有以下几个变化：
+		1) nftables不包含任何内置表和链，需要自己手动写，这样带来的好处是省资源
+		2) iptables 有内置的链，即使只需要一条链，其他的链也会跟着注册；而 nftables 不存在内置的链，可以按需注册(按需注册的意思就是自己手写)。
+		   由于 iptables 内置了一个数据包计数器，所以即使这些内置的链是空的，也会带来性能损耗
+		3) 其它规则详见PDF！
+	
+	nftables 的每个表只有一个地址簇，并且只适用于该簇的数据包。表可以指定五个簇中的一个：
+		------------------------------------------------------
+		| nftables簇				  |	iptables命令行工具   |
+		|====================================================|
+		| ip IPv4 地址 				  |	iptables             |
+		|-----------------------------|----------------------|
+		| ip6 IPv6 地址				  |	ip6tables            |
+		|-----------------------------|----------------------|
+		| inet IPv4 和 IPv6 地址	  |	iptables和ip6tables  |
+		|-----------------------------|----------------------|
+		| arp 地址解析协议(ARP)地址	  |	arptables            |
+		|-----------------------------|----------------------|
+		| bridge 处理桥接数据包		  |	ebtables             |
+		------------------------------------------------------
+		inet 同时适用于 IPv4 和 IPv6 的数据包，即统一了 ip 和 ip6 簇，可以更容易地定义规则，注：当没有指定地址簇时，默认为ip
+		
+		
+	Pv4/IPv6/Inet address family hooks，IPv4 和 IPv6 也内置了勾子函数：
+		prerouting
+		input
+		forward
+		output
+		postrouting
+		
+	链是用来保存规则的，和表一样，链也需要被显示创建，因为 nftables 没有内置的链。链有以下两种类型：
+		基本链 : 数据包的入口点，需要指定钩子类型和优先级，相当于内置链
+		常规链 : 不需要指定钩子类型和优先级，可以用来做跳转，从逻辑上对规则进行分类，类似于自定义链	
+
+
+	nft包信息：
+        rpm -qf `which nft`	        # nft 来自 nftables 包
+
+        rpm -ql nftables
+		/usr/sbin/nft				# 用户空间工具	
+		......
+
+
+nft 常见用法 
+
+   nft --help 
+   nft [ options ] [ cmds... ]
+        -h, --help 		                    # 显示帮书
+        -v, --version 	                    # 显示版本信息
+        -c, --check 	                    # 检查命令的有效性，而不实际应用更改。
+        -f, --file <filename> 	            # 包含文件内容<filename>
+        -i, --interactive 		            # 从命令行读取输入
+        -j, --json 				            # 以JSON格式化输出
+        -n, --numeric 		                # 指定一次后，以数字方式显示网络地址(默认行为)。指定两次以数字方式显示Internet服务(端口号)。指定三次以数字方式显示协议，用户ID和组ID。
+        -s, --stateless 	                # 省略规则集的有状态信息
+        -N 					                # 将IP地址转换为名称。
+        -a, --handle 		                # 显示规则句柄handle
+        -e, --echo                          # Echo what has been added, inserted or replaced.
+        -I, --includepath <directory> 	    # 添加<directory>目录到包含文件的搜索路径中。默认为: /etc
+        --debug <level [,level...]> 	    # 添加调试,在level处(scanner, parser, eval, netlink, mnl,proto-ctx, segtree, all)
+		
+
+    nft 操作符 操作目标 操作内容
+        操作符: 增,删,改,查,清除,插入,创建
+            表操作：add,delete,list,flush
+            链操作：add,delete,rename,list,flush,create
+            规则：add,delete,insert
+        操作目标: 簇,表,链,规则
+            链类型：filter,route,nat
+            链钩子：hook
+        操作内容：...
+
+	
+	规则选项：
+		------------------------------------------------------------------------------------------------------------------
+		| 1	 | accept	|	接受	|	接受包						|	停止处理                                         |
+		|----------------------------------------------------------------------------------------------------------------|
+		| 2	 | drop		|	丢弃	|	丢弃包						|	停止处理                                         |
+		|----------------------------------------------------------------------------------------------------------------|
+		| 3	 | reject	|	拒绝	|	驳回包						|	停止处理                                         |
+		|----------------------------------------------------------------------------------------------------------------|
+		| 4	 | queue	|	队列	|	发送包到用户空间程序		|	停止处理                                         |
+		|----------------------------------------------------------------------------------------------------------------|
+		| 5	 | continue	|	继续	|	继续处理包                  |                                                    |
+		|----------------------------------------------------------------------------------------------------------------|
+		| 6	 | return	|	返回	|	发送到调用的规则链进行处理  |                                                    |
+		|----------------------------------------------------------------------------------------------------------------|
+		| 7	 | jump		|	跳跃	|	发送到指定的规则链进行处理	|	当完成时或执行了返回的声明，返回到调用的规则链   |
+		|----------------------------------------------------------------------------------------------------------------|
+		| 8	 | goto		|	转到	|	发送到指定的规则链进行处理	|	不返回到调用的规则链                             |
+		|----------------------------------------------------------------------------------------------------------------|
+		| 9	 | limit	|	limit	|	达到接收包的匹配限制，		|	则根据规则处理包                                 |
+		|----------------------------------------------------------------------------------------------------------------|
+		| 10 | log		|	log		|	日志记录包					|	继续处理	                                     |
+		------------------------------------------------------------------------------------------------------------------
+
+
+    查看、增加、删、改
+        查看：以下命令后面也可以加 -nn 用于不解析ip地址和端口，加 -a 用于显示 handles
+            nft list ruleset 				# 列出所有规则
+            nft list tables 				# 列出所有表
+            nft list table filter 			# 列出ip簇的filter表
+            nft list table inet filter 		# 列出inet簇的filter表
+            nft list chain filter INPUT 	# 列出filter表input链
+
+        增加：
+            增加表：nft add table fillter
+            增加链：nft add chain filter input { type filter hook input priority 0 \; } 	# 要和hook（钩子）相关连
+            增加规则：nft add rule filter input tcp dport 22 accept
+        
+        删：
+            只需要把上面的 add 改为 delete 即可
+
+        改：
+            更改链名用 rename
+            更改规则用 replac
+
+
+示例：创建表和删除表
+	systemctl start nftables.service        # 启动 nftables 这个服务
+	nft add table inet test_table			# 创建表，这个表在 inet 簇中. inet 簇代表 iptables和ip6tables
+	nft list tables                         # 列出表
+	nft delete table inet test_table        # 删除表
+	nft list tables
+	
+
+示例:创建链
+	nft add table inet test_table      # 创建链之前首选要创建表
+	nft add chain inet test_table test_filter_input_chain { type filter hook input priority 0 \; }   # 创建基本链。"\;"防止 shell 将分号解释为命令的结尾。 priority可以是负数(整数值),值较小的链优先处理
+    nft list tables
+
+    nft list ruleset                    # 列出所有规则
+	table inet test_table {
+		chain test_filter_input_chain {	
+			type filter hook input priority filter; policy accept;	    # "type filter"表示使用的是filter表，"hook input"表示使用的是input这个基本链(也就是勾子函数),"policy accept"表示默认策略是允许
+		}
+	}	
+	
+	
+	yum -y install httpd; systemctl start httpd		
+
+	iptables -vnL
+	Chain INPUT (policy ACCEPT 0 packets, 0 bytes)
+	 pkts bytes target     prot opt in     out     source               destination
+    ......
+	
+	
+	nft list ruleset
+	table inet test_table {
+			chain test_filter_input_chain {
+					type filter hook input priority filter; policy accept;      # 相当于定义了表(filter表)和链(基本链input,也就是勾子函数)，并且默认策略是 accept
+			}
+	}
+	table ip filter {		            # 运行"iptables -vnL"之后才有的信息。说明运行"iptables"命令时，"iptables"发现没有默认的filter表和filter表里面的链，就会自动生成
+			chain INPUT {
+					type filter hook input priority filter; policy accept;
+			}
+            ......
+	}
+
+
+	nft add rule inet test_table test_filter_input_chain tcp dport http reject     # 创建常规链规则, 创建后其它同网段的主机不能访问http服务
+	
+    nft list ruleset
+	table inet test_table {
+		chain test_filter_input_chain {
+			type filter hook input priority filter; policy accept;	# 这个相当于内置链，不是规则
+			tcp dport 80 reject										# 表示链里面的第一个规则
+		}
+	}
+	......
+	
+    nft insert rule inet test_table test_filter_input_chain index 0 ip saddr 10.0.0.7 accept    # 将规则插入到链中的位置为0的位置，也就是放在次序为1的位置。
+    
+    # 这时" 10.0.0.7" 主机可以访问http服务，其它主机不行，说明规则也有次序
+
+	nft list ruleset
+	table inet test_table {
+		chain test_filter_input_chain {
+			type filter hook input priority filter; policy accept;	 # 这个相当于内置链，不是规则
+			ip saddr 10.0.0.7 accept								 # 这是第1个规则，下标为0
+			tcp dport 80 reject										 # 这是第2个规则，下标为1
+		}
+	}
+	table ip filter {
+		chain INPUT {
+			type filter hook input priority filter; policy accept;
+		}
+        ......
+	}
+
+
+示例:删除规则
+	删除单个规则：单个规则只能通过其句柄删除，首先需要找到想删除的规则句柄
+		详见PDF！
+	
+	删除所有规则：
+		nft flush ruleset
+		nft list ruleset
+
+
+示例:备份还原, 规则都是临时的，要想永久生效，可以将规则备份，重启后自动加载恢复
+	
+	cat /lib/systemd/system/nftables.service                   # 查看service文件
+	[Unit]
+    ......
+	[Service]
+	ExecStart=/sbin/nft -f /etc/sysconfig/nftables.conf			# 可以发现，开机加载的其实是这个文件，所以只需要把规则持久化到这个文件
+    ......
+	
+    // 方式1：备份至文件中 
+	nft list ruleset > /etc/sysconfig/nftables.conf        
+
+	// 方式2：启用指定的配置文件，假如把规则保存在"nftables2.conf"文件中
+	nft -f nftables2.conf		# -f 指定规则配置文件，如果已经有规则，是追加至现有规则后
+
+
+示例: 迁移iptables规则到nft	
+	详见PDF！
+
+
+================================================================防火墙用户空间工具对比===========================================================
+
+工具	        语法复杂度	                性能	            持久化方式	                                适用场景
+———————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
+iptables	    高（需记忆表 / 链逻辑）	    中	                手动保存(iptables-save)	                    运维老手、复杂规则定制、旧系统兼容
+———————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
+nftables	    中（需学习新语法）	        高（原生设计）	     手动保存规则文件(如 /etc/nftables.conf)	  高性能需求、新系统部署、IPv6 统一管理
+———————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
+ufw	            低（类自然语言）	        中（依赖后端）	     自动管理(/etc/ufw)                          Ubuntu 新手、简单防火墙配置、快速部署
+———————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
+firewalld	    低（基于区域 / 服务）	    中（依赖 iptables）	 命令行带 --permanent 参数                   Red Hat 系用户迁移、多区域动态管理、图形化配置
+
+
+========================================================================其它====================================================================
+
+
+对于普通运维人员和DevOps工程师来说，掌握哪些防火墙工具需要结合实际工作场景、主流技术栈以及工具的适用性来判断。以下是具体分析和建议：
+
+
+### **一、按工具特性与场景选择**
+#### 1. **UFW（Uncomplicated Firewall）**
+- **定位**：iptables的简化前端工具，专为初学者和普通用户设计。
+- **优势**：
+  - 语法极简（如`ufw allow 22/tcp`直接开放SSH端口），无需深入理解网络协议。
+  - 在Ubuntu及Debian系发行版中默认预装，是这些系统的标准防火墙管理工具。
+  - 适合处理基础网络需求，如服务器端口开放、简单黑白名单设置。
+- **适用场景**：
+  - 运维管理Ubuntu/Debian服务器（如阿里云、腾讯云的默认镜像）。
+  - 快速部署基础防火墙规则，无需复杂配置。
+- **建议**：**必须掌握**，尤其在Ubuntu环境中，是日常运维的基础技能。
+
+#### 2. **iptables**
+- **定位**：Linux最经典的防火墙工具，直接操作内核网络栈。
+- **优势**：
+  - 灵活性极高，可精确控制数据包的每个维度（源/目标IP、端口、协议、状态等）。
+  - 在CentOS 6及旧版本系统中仍是默认工具，部分老环境仍依赖。
+  - 是理解Linux网络栈的基础（如NAT、数据包过滤原理）。
+- **适用场景**：
+  - 处理复杂网络策略（如多层NAT、端口转发、流量整形）。
+  - 兼容旧系统或需要深度定制规则的场景。
+- **建议**：**需要掌握基础**，至少理解规则链（INPUT/OUTPUT/FORWARD）、NAT配置和规则持久化方法（如`iptables-save`）。
+
+#### 3. **firewalld**
+- **定位**：Red Hat系（CentOS 7+/RHEL 7+）的标准防火墙工具，基于区域（Zone）和服务（Service）抽象。
+- **优势**：
+  - 支持动态更新规则（无需重启服务），适合需要频繁调整策略的环境。
+  - 用“区域”概念简化多网络场景（如家庭、公共网络不同策略）。
+  - 与systemd集成，配置文件管理更规范。
+- **适用场景**：
+  - 管理CentOS/RHEL服务器（尤其是云主机、企业级服务器）。
+  - 需要标准化防火墙配置的团队协作场景。
+- **建议**：**必须掌握**，若工作中涉及CentOS 7及以上系统，firewalld是核心技能。
+
+#### 4. **nft（nftables）**
+- **定位**：新一代防火墙工具，旨在替代iptables，性能更强，语法更统一。
+- **优势**：
+  - 支持IPv4/IPv6规则统一管理，减少重复配置。
+  - 性能比iptables更高，适合高并发、大流量场景（如容器、云计算）。
+  - 语法更简洁，支持模块化规则定义（如表格、链、规则的分层结构）。
+- **适用场景**：
+  - 新兴技术栈（如Kubernetes集群、Docker容器网络）。
+  - 追求高性能的服务器环境（如CDN、负载均衡节点）。
+  - 新部署的Linux发行版（如Debian 11+、Ubuntu 20.04+默认支持）。
+- **建议**：**推荐学习**，作为未来趋势，尤其在DevOps场景中，容器网络和云原生环境可能逐渐转向nft。
+
+
+### **二、按岗位与场景的优先级建议**
+#### **普通运维人员**
+1. **必学**：
+   - **UFW**：若主要管理Ubuntu服务器。
+   - **firewalld**：若主要管理CentOS/RHEL服务器。
+2. **选学**：
+   - **iptables**：理解基础规则，应对旧系统或复杂需求。
+   - **nft**：时间充裕时了解，为新技术做准备。
+
+#### **DevOps工程师**
+1. **必学**：
+   - **firewalld**：在企业级Linux环境中（如CentOS）部署服务时常用。
+   - **iptables/UFW**：根据项目使用的发行版选择（如Ubuntu用UFW，旧系统用iptables）。
+2. **重点掌握**：
+   - **nft**：在容器化（如Kubernetes网络策略）、云原生场景中，nft的兼容性和性能更优，需优先学习。
+3. **延伸技能**：
+   - 结合基础设施即代码（IaC）工具（如Ansible、Terraform）自动化配置防火墙规则。
+
+
+### **三、总结：技能矩阵与学习路径**
+| 工具         | 运维优先级 | DevOps优先级 | 核心场景                  |
+|--------------|------------|--------------|---------------------------|
+| **UFW**      | ★★★★★      | ★★★☆☆        | Ubuntu日常运维            |
+| **firewalld**| ★★★★☆      | ★★★★☆        | CentOS/RHEL服务器管理     |
+| **iptables** | ★★★☆☆      | ★★★☆☆        | 旧系统兼容、深度定制      |
+| **nft**      | ★★☆☆☆      | ★★★★☆        | 容器网络、云原生、高性能  |
+
+#### **学习路径建议**
+1. 先掌握**UFW或firewalld**（根据常用系统），快速满足日常需求。
+2. 学习**iptables基础**，理解Linux防火墙核心原理（如Netfilter框架）。
+3. 进阶学习**nft**，关注其在容器和云环境中的应用（如与Calico、Cilium网络插件结合）。
+
+
+### **四、实际工作中的最佳实践**
+- **标准化配置**：团队协作时，统一使用firewalld（CentOS）或UFW（Ubuntu），通过配置文件（如`/etc/firewalld`或`/etc/ufw`）实现版本控制。
+- **自动化部署**：用Ansible模块（如`firewalld`、`ufw`）或Terraform资源定义防火墙规则，避免手动操作。
+- **新旧兼容**：若涉及旧系统，用iptables脚本（如`iptables-restore`）持久化规则；新环境优先尝试nft。
+
+通过以上技能组合，既能应对当前主流运维场景，也能为未来技术升级做好准备。

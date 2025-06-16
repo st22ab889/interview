@@ -310,9 +310,9 @@ yum卸载包存在的问题：
 
 
 yum事务历史:
-	/var/log/yum.log			# CentOS 7以前版本日志
+	/var/log/yum.log			# CentOS 7以前版本日志，记录了包的安装等信息
 	/var/log/dnf.rpm.log		# CentOS 8 版本日志
-	/var/log/dnf.log			# CentOS 8 版本日志
+	/var/log/dnf.log			# CentOS 8 版本日志，记录了包的安装等信息
 
 注意事项:
 	同一时间只能运行一个yum命令, 如另一个窗口yum正在安装软件包, 再用yum命令做其它事情会出现"Waiting for process with pid  xxxx to finish"

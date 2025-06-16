@@ -1,0 +1,594 @@
+========================================================================域名====================================================================
+
+域名解析服务：
+    NIS(Network Information Service)服务：集中管理，把IP和域名集中放在一个数据库中，适合于小网络，不适合互联网
+    DNS(Domain Name System 域名系统)： 应用层协议,是互联网的一项服务。  它作为将域名和IP地址相互映射的一个分布式数据库，能够使人更方便地访问互联网,基于C/S架构，服务器端：53/udp, 53/tcp
+   
+
+域名的组成：域名是一个层级结构
+	根域: 全球根服务器节点只有13个,10个在美国，1个荷兰，1个瑞典，1个日本
+	一级域名：也称为顶级域名(Top Level Domain tld): 分为组织域、国家域(.cn, .ca, .hk, .tw)、反向域三类
+	二级域名：在一级域名之下
+	三级域名：在二级羽明光之下.最多可达到127级域名，最后一级域名也成为主机名， 事实上，三四级域名都很少！
+	
+	示例：每个域名下面都有多个子域名，最后一级的域名称为主机，对应的也可以有多个主机！
+		www.sina.com.cn.
+			. 表示根域，根域服务器里面保存的是一级域名(域名和IP的映射关系)，每个网址后面其实都有一个"."，一般省略不写
+			cn 表示顶级域名，顶级域名服务器里面保存的是二级域名(域名和IP的映射关系)
+			com 表示二级域名，二级域名服务器里面保存的是三级域名(域名和IP的映射关系)
+			sina 表示三级域名，三级域名服务器里面保存的是下一级域名(域名和IP的映射关系)
+			www 是最后级域名，也称为"主机名",在这里对应的是一个网站，也就是一个主机
+
+	ICANN(The Internet Corporation for Assigned Names and Numbers 互联网名称与数字地址分配机构)：负责在全球范围内对互联网通用顶级域名（gTLD）以及国家和地区顶级域名（ccTLD）系统的管理、以及根服务器系统的管理
+		
+
+DNS(Domain Name System)
+    DNS是基础服务, 在云计算、虚拟化(虚拟机和容器)、传统架构环境中都是通过DHCP动态分配的IP, DNS必不可少.
+    解决了数字IP难以记忆，实现主机和IP的解耦的问题. 一个域名可以对应多个IP.
+
+    本地名称解析配置文件：
+        Linux: /etc/hosts , Linux可以修改host和DNS的优先级
+		windows: %WINDIR%/system32/drivers/etc/hosts
+
+    DNS服务工作原理, 以访问 news.baidu.com 为例：
+        1).客户端主机请求域名解析，如果主机是Windows系统，现在系统中的NDS缓存，如果查到直接使用。如果是Linux系统，没有DNS缓存
+        2).连接到网络服务商(电信、联通、移动)的DNS代理解析服务器,代理服务器首先会查DNS缓存服务器，如果能查到返回给客户端，查不到下一步。
+        3).DNS代理解析服务器 请求 根域服务器，根域服务器会根据请求返回顶级域名服务器的地址，这里就是返回com所在的服务器地址
+        4).DNS代理解析服务器 请求 顶级域名服务器，顶级域名服务器会根据请求返回二级域名服务器的地址，这里就是返回baidu所在的服务器地址
+        5).DNS代理解析服务器 请求 二级域名服务器的地址,二级域名服务器会根据请求返回主机服务器的地址，这里就是返回 news 所在的服务器地址
+        6).DNS代理解析服务器将结果(IP地址)返回给客户端，同时把结果缓存到DNS缓存服务器
+        7).客户端得到结果(IP地址)。windows会缓存域名对应的地址，LInux不缓存
+	
+	DNS查询类型：
+		递归查询：一般客户机和本地DNS服务器之间属于递归查询，如上第2阶段！此查询的源和目标保持不变,为了查询结果只需要发起一次查询
+		迭代查询：一般情况下(有例外)本地的DNS服务器向其它DNS服务器的查询属于迭代查询，如上第3到第5阶段！此查询的源不变,但查询的目标不断变化,为查询结果一般需要发起多次查询
+			
+			
+	修改Linux优先级  
+		cat /etc/nsswitch.conf
+		hosts:      files dns myhostname	# files写在第一个说明本地host文件的优先级大于网络DNS服务. Centos可以直接通过改这里实现优先级的改变；ubuntu 除了改这个地方，还需要改其它地方！
+
+	完整的查询请求经过的流程：
+		Client --> hosts文件 --> Client DNS Service Local Cache --> DNS Server (recursion递归) --> DNS Server Cache --> DNS iteration(迭代) --> 根--> 顶级域名DNS-->二级域名DNS…
+	
+	
+	示例：查看Windows 客户端DNS缓存
+		ping www.redhat.com
+		ipconfig/displaydns | findstr redhat 
+		C:\Users\Aaron J WU>ipconfig/flushdns           # 删除缓存
+
+
+DNS服务软件：
+    bind(Bekerley Internet Name Domain)：由 ISC (www.isc.org)提供的DNS软件实现DNS域名结构. 老牌的dns软件，比较主流，和DHCP是同一个组织开发的
+    powerdns：提供了PHP写的web界面，
+    dnsmasq：是一个小软件，既可以提供dns，又可以提供dhcp
+    unbound
+    coredns		
+
+===================================================================实现私有DNS服务================================================================
+
+使用bind实现私有的DNS服务:
+    服务端:
+        systemctl disable --now firewalld
+        yum -y  install bind bind-utils
+
+        rpm -ql bind
+        /etc/named									# 主程序
+        /etc/named.conf								# 配置文件
+        /usr/lib/systemd/system/named.service		# service 文件
+        /var/named									# 域名解析的数据目录
+        
+        id named                                    # 安装后会自动建一个名为"named"的用户
+        rpm -q --scripts bind                       # 查看 bind 包安装时是不是有脚本在运行,可以看到是这个脚本创建了用户
+        
+        vim /etc/named.conf                         
+        options {                                   # 如果下面两行,只有本机才能用这个dns服务
+            listen-on port 53 { any; };				# 这里改为 any，代表允许监听任何IP地址。或者直接注释或删除此行
+            allow-query     { any; };				# 这里改为 any，代表允许任何主机查询。或者直接注释或删除此行
+
+        
+        systemctl enable --now named
+        cat /etc/services | grep 53
+
+
+        ss -nutl
+        Netid  State      Recv-Q Send-Q     Local Address:Port      Peer Address:Port
+        udp    UNCONN     0      0                      *:53                   *:*		# 如果显示"127.0.0.1:53:53"说明 dns 服务只接受本机的dns解析请求
+        udp    UNCONN     0      0                  [::1]:53                [::]:*		# "::1" 是IPv6中的环回地址。把它看作是127.0.0.1的IPv6版本
+
+
+        cat /etc/sysconfig/network-scripts/ifcfg-eth0
+        DNS1=127.0.0.1						        # 设置 DNS 指向本机的DNS服务
+
+        systemctl restart network                   # 重启网卡, 如果报错用下面的 nmcli 命令
+        nmcli connection up eth0		            
+
+        cat /etc/resolv.conf                        # DNS生效会记录到此文件中
+
+        ping www.baidu.com                          # 测试能否解析成功
+
+        cat /var/named/named.ca                     # 每个DNS服务器在安装的时候就配置了根DNS，所以才可以ping通互联网的域名. 此文件里面行前面的";" 表示注释
+
+        rndc flush                                  # 清除dns服务器上的缓存数据(就是域名和对应的IP数据) 
+
+        # vim /etc/named.conf                       # 如果改了此文件,需要重新 reload 
+        # rndc reload                               # 不要使用"systemctl restart named",会影响正在连接的用户 
+
+
+    客户端:
+        yum -y install bind-utils                   # bind-utils 包会提供 dig、host、nslookup命令，这些命令是专业的DNS解析测试工具
+
+        rpm -ql bind-utils
+        /usr/bin/dig
+        /usr/bin/host
+        /usr/bin/nslookup
+        ......
+
+        cat /etc/sysconfig/network-scripts/ifcfg-eth0
+        DNS1=192.168.32.100					         # 把DNS服务器指向服务端IP
+        ......
+
+        systemctl restart network
+        cat /etc/resolv.conf
+
+        dig www.baidu.com
+        ;; flags: qr rd ra; QUERY: 1, ANSWER: 3, AUTHORITY: 5, ADDITIONAL: 8	# flags 后面没有aa说明是非权威服务器返回
+        ......
+
+        dig www.a.shifen.com @180.76.76.95						# 指定DNS服务进行地址解析. 结果可以看到 flags 后面有aa, 说明是权威服务器返回
+
+        host www.a.shifen.com 180.76.76.95                      # host 命令没有dig显示的详细
+
+        nslookup www.a.shifen.com                               # windows上也支持这个命令 , 返回结果如果包含"Non-authoritative",说明是非权威服务器
+
+    权威服务器和非权威服务器
+	    权威服务器：由直接的DNS服务器查询到的结果，称为权威服务器
+	    非权威服务器：直接DNS服务器查不到，需要从根DNS服务器开始查询
+	       
+    DNS的 UDP 53 端口和 TCP 53 端口：
+        UDP 53 ：查询(域名解析)，区域传输(主从复制),如果禁用，dns客户端无法查询
+        TCP 53 ：只区域传输(主从复制)，如果禁用，主从复制会失败，不能同步
+
+
+(重要)启用DNS客户端缓存功能.
+	如果主机很多，又没有缓存，dns的服务器压力很大，这样很多服务会受到影响.缓存可以减少DNS服务器压力,提高DNS查询速度，建议在生产中启用缓存！
+	linux默认没有没有缓存，比如把DNS服务器一关，就不能解析域名！安装nscd(Name Service Cache Daemon,名称服务缓存守护进程)包可以支持DNS缓存功能！
+	
+	CentOS 启用DNS客户端缓存：
+		yum -y install nscd
+		systemctl enable --now nscd
+		nscd -g                                         # 查看缓存统计信息，有用户缓存、组缓存、域名解析缓存
+		[root@centos7 ~]#nscd -i hosts                  # 清除DNS客户端缓存
+	
+	Ubuntu 启用DNS客户端缓存：
+        systemctl status systemd-resolved.service       # ubuntu 默认会启用DNS客户端缓存
+		systemd-resolve --statistics
+		systemd-resolve --flush-caches                  # 清空缓存
+		systemd-resolve --statistics
+
+
+=================================================================正向解析和反向解析===============================================================
+
+注意点:
+    公司内部随着不同的项目可能有多个不同的dns服务.
+    公司内部的域名不要和互联网上的域名冲突，比如互联上用的"company.com"，内部就用"company.org"或"company.local"、或其他
+
+
+企业内部正向解析dns服务(把域名解析为IP)
+    cat /etc/named.conf
+	options {
+			listen-on port 53     { any; };
+			listen-on-v6 port 53 { ::1; };
+			directory       "/var/named"; 			    # 这里定义了目录路径，dns相关的配置文件都是以这个目录为相对目录
+            ......  
+	};	
+	include "/etc/named.rfc1912.zones";		
+	......
+
+    cat /etc/named.rfc1912.zones
+	zone "company.org" IN {			# zone后面的跟的名字就是负责要解析的域名， IN 可以省略
+		type master;
+		file "company.org.zone"		# 如果访问的域名是"company.org"就从"company.org.zone"这个文件里面查询IP，这个文件在"/var/named"; "目录下;
+	}	
+	......
+
+    cd /var/named/; ll named.localhost          # "named.localhost"是域名解析文件格式的示例，这个文件存的就是域名解析的数据，称之为"域名解析数据库"
+
+    cp -p named.localhost company.org.zone      # 拷贝的时候注意权限,可以直接拷贝一份进行修改
+
+
+    vim  /var/named/company.org.zone                    # 域名解析数据库是由资源记录组成(Resource Record),简称RR
+    $TTL 1D							# $TTL 1D 是一个全局指令,用于设置默认TTL(Time To Live)值。TTL控制DNS记录在缓存服务器(如本地DNS服务器或浏览器)中的保留时间，直接影响域名解析的时效性和更新速度
+    @	IN SOA	master  admin.company.org.   (		# SOA类型的"资源记录"相当于描述了区域数据库的元数据。这里的master要和A记录成对使用，表示当前这个域的DNS服务器是哪个
+                0		; serial	# 表示这个解析数据库的版本号，每次修改这个数据库后都要修改版本号，修改后域名解析数据库才会更新
+                1D		; refresh	# 如果是主从DNS，表示每隔多长时间，从DNS服务器同步主DNS的数据
+                1H		; retry		# 如果同步不成功，每隔多长时间重新同步
+                1W		; expire	# 如果主服务器长期不可达，从属服务器保留数据的最长时间（默认 1W = 1 周）。主从DNS都能够提供查询服务。
+                3H )	; minimum	# 如果一个错误域名查询不到，不会一直查，会放进缓存，这个缓存三小时过期，过期后再查。从这里往前到"@"算一条资源记录
+                NS  master			# 标明当前区域的DNS服务器，有多个DNS服务器，就对应多个NS记录，比如还有slave dns服务器! 这里的master实际上就是这个DNS服务自身
+    master  	A   192.168.32.100	# 指定dns服务器自身的地址
+    www      	A   192.168.32.161  # A记录就是域名和IP的对应关系，AAAA 就表示域名和IPv6的对应关系
+    ks8node1  	A  	192.168.32.162
+    ks8node2 	A  	192.168.32.163
+    *        	A   192.168.32.164		# "*"表示泛域名解析，当访问"company.org"域名时，如果查询不到具体的主机名，就返回这个IP
+    @        	A   192.168.32.165		# "@"表示"company.org"。@是 DNS 区域文件中表示当前区域域名的特殊符号。它简化了根域名记录的编写，避免重复输入完整域名。
+
+    	说明1:资源记录定义的格式为
+			name [TTL] IN RR_type value
+	
+        说明2:
+            "@"代表域名，这个值来源于定义 zone 的名称，比如  zone "company.org" IN {......}
+            "*"表示泛域名，相当于通配符
+            name写法：
+                如果写为 "name", 会自动在后面加上域名，结果就是  name.company.org
+                如果写为"name..company.org", 会自动在后面加上域名，结果就是  name.company.org.company.org
+                如果写为"name..company.org.", 不会在后面加上域名。特别注意后面加"."和不加"."的区别	
+        
+        说明3:
+            示例1：
+                @	IN SOA	master  admin.company.org.   ( ...... ) ; minimum
+                说明：
+                    @ :表示引用当前区域的域名，上面表示引用的是"company.org"
+                    TTL: 因为TTL已经定义为全局，所以这里省略不屑
+                    IN：表示 internet 在DNS报文中由classify字段表示
+                    SOA：RR的类型
+                    "master  admin.company.org.   ( ...... ) ; minimum"：表示value，SOA的value比较复杂：
+                        master表示当前这个域的DNS服务器是哪个，要和A记录成对使用
+                        "admin.company.org." 表示邮箱，这个邮箱只是个描述性信息。因为"@"在这个文件有特殊定义，所以使用"."替代作为邮箱符号
+            
+            示例2：
+                NS  master
+                说明：
+                    name、TTL、IN 都被省略
+                    NS：RR的类型
+                    master：值
+            
+            示例3：
+                master  	A   192.168.32.100
+                说明：
+                    master：表示name，比如"master.company.org"中的master就是这里设定的master
+                    TTL、IN被省略
+                    A：RR的类型
+                    "192.168.32.100"：表示值
+	
+
+        资源记录-MX记录
+            name: 当前区域的名字
+            value: 当前区域的某邮件服务器(smtp服务器)的主机名
+            注意：
+                1. 一个区域内，MX记录可有多个；但每个记录的value之前应该有一个数字(0-99)，表示此服务器的优先级；数字越小优先级越高
+                2. 对MX记录而言，任何一个MX记录后面的服务器名字，都应该在后续有一个A记录
+            
+            范例：
+                magedu.org. 	IN 		MX 		10 	mx1.company.org.	# 当给"magedu.org"这个域发邮件，邮件服务器是由"mx1.magedu.org"提供，"mx1.magedu.org"也要对应一个A记录
+                                IN 		MX 		20 	mx2.company.org.
+                mx1 					A 		192.168.32.110
+                mx2 					A 		192.168.32.111
+
+            dig -t mx aaron.com         # 查询"aaron.com"这个域的服务器
+
+
+        资源记录-CNAME别名记录
+            name: 别名的 FQDN
+            value: 真正名字的FQDN
+            范例：
+                www.company.org. IN CNAME www.company.org.cdn.quick.com.			# 别名一般配合cdn使用
+                
+
+        资源记录-TXT
+            TXT：对域名进行标识和说明的一种方式，一般做验证记录时会使用此项，如：SPF（反垃圾邮件）记录，https验证等，如下示例：
+            范例：
+                _dnsauth TXT 2012011200000051qgs69bwoh4h6nht4n1h0lr038x		# 颁发证书的时候会提供这段字符串，单独配合dns安全验证的记录
+
+
+	named-checkzone "company.org" /var/named/company.org.zone           # "域名解析数据库"文件语法检查
+	named-checkconf                                                     # 主配置文件语法检查 
+
+
+(了解)反向DNS解析：
+    把IP解析为域名，解析是是以网段为单位.
+
+	解析原理,以 192.168.32.100 为例:
+		IP有网络名和主机名，网络名相当于网址中的域名，主机名相当于网址中的主机名! 同样根域为.，顶级域名为 arpa，二级域名为 in-addr，这些都是固定的!
+		依次将IP中的网络段反写，因为解析是以网段为单位,所以不用写主机名！最终IP的反向写法形式为：32.168.192.in-addr.arpa.		
+
+    配置文件写法，以 192.168.32.100 为例：
+        
+        cat /etc/named.rfc1912.zones
+        zone "32.168.192.in-addr.arpa" IN {			 #  解析 192.168.32.0/24 网段内的 IP 到域名
+            type master;
+            file "192.168.32.zone";		             # 如果访问的域名是"company.org"就从"company.org.zone"这个文件里面查询IP，这个文件在"/var/named"; "目录下;
+        }
+        ......
+
+        cd /var/named/; cp -p named.loopback 192.168.32.zone        # 注意"/etc/192.168.32.zone"文件的权限
+        
+        vim /etc/192.168.32.zone                 # 配置文件写法, 以 192.168.32.100 为例
+        $TTL 86400
+        $ORIGIN 16.172.in-addr.arpa.
+        @ 	IN 		SOA 	ns1.magedu.org. 	admin.magedu.org. (
+                                                        2015042201
+                                                        1H
+                                                        5M
+                                                        7D
+                                                        1D )
+                    IN NS ns1.magedu.org.
+        120 IN PTR www.company.org.				# 表示把 192.168.32.120 解析为 www.magedu.org
+        121 IN PTR mx1.company.org.				# 表示把 192.168.32.121 解析为 mx1.magedu.org
+        
+        rndc reload
+        dig -t ptr 192.168.32.120.in-addr.arpa 		# arpa是互联网最早的称呼
+
+====================================================================DNS主从服务器================================================================
+			
+实现DNS主从服务器.
+	只有一个DNS服务器会出现单点失败的问题，主从架构不仅能容错(解决单点失败问题)，还能实现负载均衡. 实现方案是：主机 ---> (vip)lvs -----> dns1,dns2
+		
+	如果仅仅把主dns服务器和从dns服务器配置在客户端上，默认走主dns，只有当主dns服务提供不了服务的时候才走从dns服务:
+		在windows手动设置dns，有两项：首选DNS服务器和备用DNS服务器
+		在Linux上设置dns,dns1、dns2 ... , dns1就是用来配置主dns服务器
+		
+    1.从DNS服务器配置,假如从节点的IP为 192.168.32.101	
+        systemctl disable --now firewalld
+        
+        yum -y  install bind bind-utils
+        
+        vim /etc/named.conf
+        options {
+            listen-on port 53 { any; };				    # 这里改为 any，代表允许监听任何IP地址。或者直接注释或删除此行
+            allow-query     { any; };				    # 这里改为 any，代表允许任何主机查询。或者直接注释或删除此行
+            directory       "/var/named"; 				# 这里定义了目录路径，dns相关的配置文件都是以这个目录为相对目录
+            dnssec-enable no;                           # 这项和下面一项是和dns安全相关加密的项，一般不启动加密，启动加密，有些操作可能会失败
+            dnssec-validation no;		
+        ......省略
+        
+        vim /etc/named.rfc1912.zones
+        zone "company.org" IN {			
+            type slave;							# slave说明这是一个从DNS服务器
+            master {192.168.32.100;};			# 指明主DNS服务器的地址
+            file "slaves/company.org.slave";	# 从主DNS服务器拷贝过来的文件放在 "/var/named"; /slaves/"目录 ，并且重命名为"company.org.slave"
+        }										# 从centos7开始，从主dns服务器同步过来的文件转换为二进制文件，为了安全！centos7之前的版本不会做格式转换，可以直接查看
+        ......省略
+        
+        systemctl enable --now named            # 这时客户端就可以配置两个DNS，一个是主DNS服务器的地址，一个是从DNS服务器的地址
+        
+	
+    2.实现主从DNS服务器数据同步，主DNS服务器地址为 192.168.32.100 	
+        vim  /var/named/company.org.zone
+        $TTL 1D											
+        @	IN SOA	master  admin.company.org.   (		
+                    1		; serial	# 注意版本号要更新，否则修改了也不会同步给从dns服务器，只看版本号是否更新，而不是看文件是否修改
+                    1D		; refresh	# 如果是主从DNS，表示每隔多长时间，从DNS服务器同步主DNS的数据
+                    1H		; retry		
+                    1W		; expire	
+                    3H )	; minimum	
+                    NS  master			
+                    NS  slave1			# 配置从DNS服务器，只要主服务器的这个"域名解析数据库"文件一发生改变，就马上同步给从服务器
+        master  	A   192.168.32.100
+        slave1		A	192.168.32.101
+        www      	A   192.168.32.161	
+        ks8node1  	A  	192.168.32.162	
+        ks8node2 	A  	192.168.32.163	
+        *        	A   192.168.32.164	
+        @        	A   192.168.32.165	
+
+        rndc reload	                                # 重新加载配置文件
+        ll /var/named/slaves/company.org.slave      # 在从dns服务器上查看"域名解析数据库"文件，从时间上可以看出来文件已经更新
+	
+	
+    3.目前主从同步存在巨大问题，默认DNS服务器是不安全的，因为任何任何服务器都可以连到主DNS服务器，这样黑客可以直接拿到DNS数据，对内部网络架构一目了然，就能实现精准攻击
+        
+        dig -t axfr company.org             # 这个命令就可以把"域名解析数据库"文件直接显示出来 
+        
+        vim /etc/named.conf                 # 修改主DNS服务器的主配置文件
+        options {
+            listen-on port 53 { any; };				
+            allow-query     { any; };				
+            directory       "/var/named"; 
+            allow-transfer {192.168.32.101;};		# 允许同步数据的服务器，这里就可以指定从DNS服务器的IP
+            dnssec-enable no;
+            dnssec-validation no;		
+        ......省略
+        
+        rndc reload	
+        
+
+        vim /etc/named.conf                         # 修改从DNS服务器的主配置文件    
+        options {
+            listen-on port 53 { any; };				
+            allow-query     { any; };				
+            directory       "/var/named"; 
+            allow-transfer {none;};					# 不允许任何人抓取数据。注意：抓取数据和查询DNS是两个概念，步允许抓取数据，不影响dns查询
+            dnssec-enable no;
+            dnssec-validation no;
+        ......省略
+        
+        rndc reload	
+        dig -t axfr company.org @192.168.32.100     # 在主节点DNS服务器获取数据失败
+        dig -t axfr company.org @192.168.32.101	    # 在从节点DNS服务器获取数据失败    
+
+==================================================================子域委派+转发查询================================================================
+
+子域委派
+    www.business.company.org
+		company.org 是父域
+		business 就是子域
+		www 是主机
+
+    子域实现的几种情况：
+        子域和父域放在同一服务器上，不好管理
+        子域和父域放在不同的服务器上，好管理，权责分立
+
+    创建子域:
+        主DNS 192.168.32.100 主机：
+            vim  /var/named/company.org.zone
+            $TTL 1D											
+            @	IN SOA	master  admin.company.org.   (		
+                        2		; serial	# 注意版本号要更新，否则修改了也不会同步给从dns服务器，只看版本号是否更新，而不是看文件是否修改
+                        1D		; refresh	# 如果是主从DNS，表示每隔多长时间，从DNS服务器同步主DNS的数据
+                        1H		; retry		
+                        1W		; expire	
+                        3H )	; minimum	
+                        NS  master			
+                        NS  slave1			# 配置从DNS服务器，只要主服务器的这个"域名解析数据库"文件一发生改变，就马上同步给从服务器
+                        NS	business		# 配置子域
+            master  	A   192.168.32.100
+            slave1		A	192.168.32.101
+            business	A	192.168.32.102	# 子域的地址，这就是把子域委派给另外一个服务器负责，这叫dns的域名委派
+            www      	A   192.168.32.161	
+            ks8node1  	A  	192.168.32.162	
+            ks8node2 	A  	192.168.32.163	
+            ;*        	A   192.168.32.164	# 泛域名解析要删除，可能会影响子域，";"表示注释
+            @        	A   192.168.32.165		
+            
+            rndc reload
+
+        子域 192.168.32.102	主机：
+            systemctl disable --now firewalld
+            yum -y  install bind bind-utils
+            
+            vim /etc/named.conf
+            options {
+                listen-on port 53 { any; };				
+                allow-query     { any; };				
+                directory       "/var/named"; 
+                allow-transfer {none;};			        # 如果子域有从DNS服务器，这里填从DNS服务器的地址
+                dnssec-enable no;
+                dnssec-validation no;
+            ......省略
+            
+            vim /etc/named.rfc1912.zones
+            zone "business.company.org" IN {			
+                type master;						
+                file "business.company.org.zone";
+            }									
+            ......省略
+            
+            vim /var/named/business.company.org.zone
+            $TTL 86400											# 如果不写单位表示秒					
+            @	IN SOA	business  admin ( 1 1D 60M 1W 3H )		# business 和 admin都会自动补域名	
+                        NS  master			
+                        NS  slave1			
+            business  	A   192.168.32.102						# 指定dns服务器自身的地址
+            www			A	192.168.32.181
+
+            chgrep named /var/named/business.company.org.zone   # 注意权限
+            chmod 640 /var/named/business.company.org.zone 
+            systemctl enable --now named
+	      
+
+实现DNS转发(缓存)服务器
+	利用DNS转发，可以将用户的DNS请求，转发至指定的DNS服务，而非默认的根DNS服务器，并将指定服务器查询的返回结果进行缓存，提高效率。转发服务器实际上是个缓存服务器！
+	
+    场景：
+		假如一个公司有两个分公司，总公司在广州，分公司在北京和上海，为了安全，北京和上海分公司的主机不能直接联网，通过专线连接到总公司，
+		总公司连接到互联网，DNS服务器也在总公司，这样分公司里面的主机每次访问互联网都要使用总公司的DNS服务器，这样效率很低，
+		所以需要在分公司搭建DNS服务器，然后总公司的DNS服务器和分公司的DNS服务器进行数据同步，当分公司发起一个DNS解析请求，就访问分公司的DNS服务器，
+		如果DNS服务器有记录就直接返回，如果没有记录，按理说就应该直接从互联网上的根服务器去进行查找，但是分公司没有直接连到互联网，
+		所以这时候就需要把解析请求转发给总公司的DNS服务器，由总公司的DNS服务器去互联网查找，这就是DNS转发
+	
+	转发策略：
+		only: 先转发至指定DNS服务器，如果无法解析查询请求，则本服务器将不再去根服务器查询
+		first：先转发至指定DNS服务器，如果无法解析查询请求，则本服务器再去根服务器查询
+		
+	
+	准发方式：
+		全局转发：对非本机所负责解析区域的请求，全转发给指定的服务器，在全局配置块中实现：
+			Options {
+				forward first|only;
+				forwarders { ip;};
+			};
+		
+		特定区域转发：仅转发对特定的区域的请求，比全局转发优先级高
+			zone "ZONE_NAME" IN {
+				type forward;
+				forward first|only;
+				forwarders { ip;};
+			};	
+		
+	注意：
+		1. 被转发的服务器需要能够为请求者做递归，否则转发请求不予进行
+		2. 在/etc/named.conf的全局配置块中，关闭dnssec功能
+
+
+    示例: 实现DNS forward（缓存）服务器：
+            yum -y install bind         #  假如主机 192.168.32.191 是分公司的DNS服务器
+            
+            vim /etc/named.conf
+            options {
+                listen-on port 53 { any; };				
+                allow-query     { any; };				
+                directory       "/var/named"; 
+                allow-transfer {none;};			# 如果子域有从DNS服务器，这里填从DNS服务器的地址
+                dnssec-enable no;				# 要设置为no,防止转发失败
+                dnssec-validation no;			# 要设置为no,防止转发失败
+                forward only;					# 设置转发策略
+                forwarders {192.168.32.100;};	# 设置转发的目标DNS服务器
+            ......
+        
+            systemctl enable --now named
+            dig www.baidu.com.org @192.168.32.191   # 在另外的主机上测试
+
+======================================================================智能DNS====================================================================
+
+CDN(Content Delivery Network，即内容分发网络)
+
+智能DNS：根据客户端的地址自动返回就近的服务器地址. 有 dnspod 、dns.la
+
+GSLB(Global Server Load Balance，全局负载均衡)是实现智能DNS的具体技术：
+    GSLB是对服务器和链路进行综合判断来决定由哪个地点的服务器来提供服务，实现异地服务器群服务质量的保证
+	GSLB主要的目的是在整个网络范围内将用户的请求定向到最近的节点（或者区域）
+	GSLB分为基于DNS实现、基于重定向实现、基于路由协议实现，其中最通用的是基于DNS解析方式
+
+
+(了解)智能DNS相关技术
+	1) bind中ACL(Access Control List,访问控制列表)
+		ACL：把一个或多个地址归并为一个集合，并通过一个统一的名称调用
+		注意：只能先定义后使用；因此一般定义在配置文件中，处于options的前面
+		格式：		
+			acl acl_name {
+				ip;
+				net/prelen;
+				……
+			};
+			
+	2) bind有四个内置的acl
+		none 		没有一个主机
+		any 		任意主机
+		localhost 	本机
+		localnet 	本机的IP同掩码运算后得到的网络地址
+	
+	3) 访问控制的指令
+		none 		没有一个主机
+		any 		任意主机
+		localhost 	本机
+		localnet 	本机的IP同掩码运算后得到的网络地址
+
+	4)  View：视图，将ACL和区域数据库实现对应关系，以实现智能DNS
+			一个bind服务器可定义多个view，每个view中可定义一个或多个zone
+			每个view用来匹配一组客户端
+			多个view内可能需要对同一个区域进行解析，但使用不同的区域解析库文件
+			
+			注意：
+				一旦启用了view，所有的zone都只能定义在view中
+				仅在允许递归请求的客户端所在view中定义根区域
+				客户端请求到达时，是自上而下检查每个view所服务的客户端列表
+		
+		view 格式:
+			view VIEW_NAME {
+				match-clients { beijingnet; };
+				zone "magedu.org" {
+					type master;
+					file "magedu.org.zone.bj";
+				};
+				include "/etc/named.rfc1912.zones";
+			};
+			
+			view VIEW_NAME {
+				match-clients { shanghainet; };
+				zone "magedu.org" {
+					type master;
+					file "magedu.org.zone.sh";
+				};
+				include "/etc/named.rfc1912.zones";
+			};

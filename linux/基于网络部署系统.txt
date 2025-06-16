@@ -1,0 +1,259 @@
+
+运维平台：把各种运维操作以web服务的方式提供出来，可视化操作. 比如宝塔运维管理面板、腾讯蓝鲸智云等！
+自运维系统：提供自动化功能，根据业务自动扩缩容、自动替换故障主机等
+
+Linux的安装过程如下：
+    加载boot loader
+    加载启动安装菜单
+    加载内核和initrd文件
+    加载根系统
+    运行anaconda的安装向导
+
+在系统光盘的isolinux目录下有和安装相关的文件
+    boot.cat: 相当于grub的第一阶段
+    isolinux.bin：光盘引导程序，在mkisofs的选项中需要明确给出文件路径，这个文件属于SYSLINUX项目
+    isolinux.cfg：启动菜单的配置文件，当光盘启动后（即运行isolinux.bin），会自动去找 isolinux.cfg文件。这个文件很重要，可以参考这个文件自定义启动菜单，比如：光盘启动、网络启动、U盘启动、图形界面启动等
+    vesamenu.c32：是光盘启动后的启动菜单图形界面，也属于SYSLINUX项目，menu.c32提供纯文的菜单。在centos8中有3个c32文件，缺一不可
+    memtest：内存检测程序
+    splash.png：光盘启动菜单界面的背景图
+    vmlinuz：是内核映像
+    initrd.img：ramfs文件，虚拟文件系统文件文件，对应的是"/boot/vmlinuz-3.10.0-1160.el7.x86_64"文件
+
+
+批量部署系统(给机器装操作系统)
+    光盘/U盘安装，把所有实现自动化安装的过程放在光盘/U盘中，不依赖网络，适合少量机器手动装系统！
+    网络安装，把所有实现自动化安装的过程放在一台网络主机上，利用DHCP、TFTP、HTTP提供网络服务，主机只需要打开电源，即可实现自动化安装！
+
+
+自动化部署系统的两种方案：
+    PXE：手动配置，遇到复杂场景比较繁琐，比如说有些主机用的不是bios，用的是uefi环境，这种情况下用cobbler更省事
+    cobbler，底层基于 PXE，cobbler提供了丰富的工具，使用工具就可以生成一些配置文件，相对来讲比较简单！
+    PXE 和 cobbler 都依赖DHCP、TFTP、HTTP提供网络服务！    
+
+
+DHCP服务
+	DHCP工作原理：
+		DHCP( Dynamic Host Configuration Protocol，动态主机配置协议): 作用是给主机分配地址
+		UDP协议，C/S模式:
+            dhcp server：67/udp,dhcpv4 
+            client :68/udp，dhcpv6 
+            client：546/udp
+		DHCP申请地址的过程实际上是基于广播实现！
+		DHCP服务端监听UDP 67 端口，如果主机设置为自动获取IP，就会开启DHCP客户端，监听 UDP 68 端口！
+		DHCP客户端监听UDP 68 端口
+
+	主要用途：
+		用于内部网络和网络服务供应商自动分配IP地址给用户
+		用于内部网络管理员作为对所有电脑作集中管理的手段
+		自动化安装系统
+		解决IPV4资源不足问题
+	
+	DHCP服务续租: DHCP把IP分给客户端用，是有时间限制的，所以客户端需要续租
+		(1) 50% ：租赁时间达到50%时来续租，刚向DHCP服务器发向新的DHCPREQUEST请求。如果dhcp服务没有拒绝的理由，则回应DHCPACK信息。
+			当DHCP客户端收到该应答信息后，就重新开始新的租用周期
+		(2) 87.5%：如果之前DHCP Server没有回应续租请求，等到租约期的7/8时，主机会再发送一次广播请求
+	
+	租期：
+		长租期：IP相对稳定，网络资源消耗较少，但是浪费IP资源
+		短租期：IP相对不稳定，网络资源消耗较多，但是IP资源可以充分利用，可以实现较少IP为较多的主机服务
+	
+	同网段多DHCP服务(同一个网段有多个主机向DHCP申请IP)：
+		DHCP服务必须基于本地
+		先到先得的原则
+
+	跨网段：跨网段就需要路由转发，但是路由会隔断广播
+		RFC 1542 Compliant Routers
+		dhcp relay agent(中继代理):通常情况下路由器的接口都可以作为代理， 硬件路由器有代理功能，让接口启动代理(agent)，就是DHCP的IP配置到接口上
+			
+			主机 -----广播------> (RelayAgent)路由器 -----单播------> DHCP服务器
+		
+		因为路由器知道DHCP服务器的地址，所以采用单播的方式，单播方式的好处是，不管中间隔几个路由器都能访问到！
+	
+	DHCP实现
+		DHCP服务的实现软件：
+			dhcp（CentOS 7 之前版本） 或 dhcp-server（CentOS 8 中的包名）
+			dnsmasq：小型服务软件，可以提供dhcp和dns功能
+		注意：实现DHCP服务前，先将网络已有DHCP服务，如：vmware中的DHCP关闭，访止冲突。
+
+
+TFTP(Trivial File Transfer Protocol)服务
+	TFTP是一种用于传输文件的简单高级协议，是文件传输协议(FTP)的简化版本，主要用来传输小文件
+	TFTP是一种开放协议，缺乏安全性，没有加密机制，与TFTP通信时不需要认证
+	TFTP使用UDP作为传输层协议！
+	TFTP仅使用一个具有停止和等待模式的端口：端口：69/udp
+	TFTP的作用就是提供小文件的下载，有些网卡内置了 TFTP 客户端，不用下载客户端，默认就可以连 TFTP 服务器下载资源
+
+
+应答文件(kickstart文件)
+    用于保存安装过程需要指定的选项。比如分区、root口令 、时区、软件包、主机名、基于key验证等.操作系统中不同的安装方法就是添加了不同的内核参数而已！
+    自动化部署比较核心的步骤是制作应答文件，应答文件是文本文件。在安装系统的时候添加内核参数，告诉安装向导从哪个位置加载应答文件，从而实现自动安装！
+    centos8上把制作应答文件的方法已经取消了，要去官方注册，必须是红帽企业版的订阅用户，给订阅用户提供了制作应答文件的工具！
+    centos7上有提供作应答文件的工具 system-config-kickstart，是个图像化工具，通过这个工具可以制作出应答文件！
+
+    "/root/anaconda-ks.cfg"文件就是应答文件，这个文件就是手动安装linux时的整个过程,被系统自动记录,成为了应答文件.
+    如果装的系统和这个系统一模一样，可以直接用这个文件！有些小地方也可以手动修改，也能实现简单的定制！
+
+
+    Kickstart文件格式官方说明
+		https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/performing_an_advanced_rhel_installation/index
+		https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/installation_guide/sect-kickstart-syntax
+		https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/6/html/installation_guide/s1-kickstart2-options
+
+
+    kickstart文件格式说明：
+		kickstart文件主要包括三个部分：命令段，程序包段，脚本段
+			命令段：指明各种安装前配置，如键盘类型等，命令段中的常见命令：
+				keyboard: 设定键盘类型
+				lang: 语言类型
+				zerombr：清除mbr
+				clearpart：清除分区
+				part: 创建分区
+				rootpw: 指明root的密码
+				timezone: 时区
+				text: 文本安装界面
+				network:指定网络设置
+				firewall：设置防火墙设置
+				selinux：设置selinux设置
+				reboot：安装完自动重启
+				user：安装完成后为系统创建新用户
+				url: 指明安装源
+			程序包段：指明要安装的程序包组或程序包，不安装的程序包等
+				%packages
+				@^environment group： 指定环境包组，如：@^minimal-environment
+				@group_name
+				package
+				-package
+				%end
+			脚本段：
+				%pre: 安装前脚本
+				%post: 安装后脚本
+	
+		注意：
+			CentOS 8,7,6 不同版本的kickstart文件格式不尽相同，不可混用
+			%addon, %packages, %onerror, %pre 、 %post 必须以%end结束，否则安装失败
+    
+
+    (重点)kickstart文件创建
+        方式1: 使用创建工具 system-config-kickstart ，注意：此方法 CentOS 8 不再支持
+		方式2: 依据某模板修改并生成新配置，CentOS安装完后，会自动参考当前系统的安装过程，生成一个 kickstart文件, 位于 /root/anaconda-ks.cfg
+
+        使用 system-config-kickstart 生成kickstart`配置文件	
+            yum -y install system-config-kickstart
+            打开Xmanager，查看Xmanager窗口标号
+            export DISPLAY=[Windows的IP]:[Xmanager窗口标号]		        # 如：export DISPLAY=192.168.3.11:0.0
+            system-config-kickstart                                     # 打开配置的图形界面
+
+        检查ks文件的语法：
+			ksvalidator /PATH/TO/KICKSTART_FILE         # 使用 ksvalidator 工具可以检查kickstart的文件格式是否有语法错误，来自于 pykickstart 包格式
+
+
+    CentOS 8 的最小化安装kickstart文件
+        ignoredisk --only-use=sda
+        zerombr
+        text
+        reboot
+        clearpart --all --initlabel
+        selinux --disabled
+        firewall --disabled
+        url --url=http://10.0.0.8/centos/8/os/x86_64/
+        keyboard --vckeymap=us --xlayouts='us'
+        lang en_US.UTF-8
+        bootloader --append="net.ifnames=0" --location=mbr --boot-drive=sda #此行必须指定
+        network --bootproto=dhcp --device=eth0 --ipv6=auto --activate
+        network --hostname=centos8.magedu.org
+        rootpw --iscrypted
+        $6$j9YhzDUnQVnxaAk8$qv7rkMcPAEbV5yvwsP666DXWYadd3jYjkA9fpxAo9qYotjGGBUclCGoP1TRv
+        gHBpqgc5n0RypMsPTQnVDcpO01
+        firstboot --enable
+        skipx
+        services --disabled="chronyd"
+        timezone Asia/Shanghai --isUtc --nontp
+        user --name=wang --
+        password=6oUfb/02CWfLb5l8f$sgEZeR7c7DpqfpmFDH6huSmDbW1XQNR4qKl2EPns.gOXqlnAIgv9p
+        TogtFVaDtEpMOC.SWXKYqxfVtd9MCwxb1 --iscrypted --gecos="wang"
+        #autopart --type=lvm
+        #part / --fstype xfs --size 1 --grow --ondisk sda 		可以实现根自动使用所有剩余空间
+        part / --fstype="xfs" --ondisk=sda --size=102400
+        part /data --fstype="xfs" --ondisk=sda --size=51200
+        part swap --fstype="swap" --ondisk=sda --size=2048
+        part /boot --fstype="ext4" --ondisk=sda --size=1024
+        %packages
+        @^minimal-environment
+        kexec-tools
+        %end
+        %addon com_redhat_kdump --enable --reserve-mb='auto'
+        %end
+        %anaconda
+        pwpolicy root --minlen=6 --minquality=1 --notstrict --nochanges --notempty
+        pwpolicy user --minlen=6 --minquality=1 --notstrict --nochanges --emptyok
+        pwpolicy luks --minlen=6 --minquality=1 --notstrict --nochanges --notempty
+        %end
+        %post
+        useradd mage
+        echo magedu | passwd --stdin mage &> /dev/null
+	%end	
+
+
+    (了解)制作引导安装光盘或U盘, 并结合kickstart可实现基于光盘或u盘启动的半自动化安装
+
+
+主机获取网络配置可以通过两种方式：
+	静态指定
+	动态获取:
+		bootp：boot protocol, MAC与IP一一静态对应
+		dhcp：增强的bootp，支持静态和动态
+
+
+
+基于PXE实现自动化的系统安装
+  
+	PXE介绍：
+		PXE（Preboot Excution Environment，预启动执行环境）： 是由Intel公司研发，基于Client/Server的网络模式，	
+		PXE支持远程主机通过网络从远端服务器下载映像，并由此支持通过网络启动操作系统，可以引导和安装Windows，linux等多种操作系统
+	
+	PXE网卡：
+		在网卡的ROM里面，除了保存的MAC地址，还集成了DHCP、TFTP客户端，所以网卡家电后可以自动获取IP，通过TFTP获取系统启动文件，所以网卡可以引导设备
+		现在网卡基本上都集成了DHCP、TFTP客户端！
+	
+	安装前准备：
+		httpd服务：提供应答文件、yum仓库
+		DCHP服务
+		TFTP服务，"/var/lib/tftpboot"目录下应提供如下资源：
+			[root@centos8 ~]#tree /var/lib/tftpboot
+			.
+			├── centos6
+			│ ├── initrd.img
+			│ └── vmlinuz
+			├── centos7
+			│ ├── initrd.img	# 内核文件
+			│ └── vmlinuz		# 内核文件
+			├── centos8
+			│ ├── initrd.img
+			│ └── vmlinuz
+			├── ldlinux.c32		# CentOS8安装所必须文件，和菜单风格有关，在centos8安装光盘的isoliinux目录下面
+			├── libcom32.c32	# CentOS8安装所必须文件，和菜单风格有关，在centos8安装光盘的isoliinux目录下面
+			├── libutil.c32		# CentOS8安装所必须文件，和菜单风格有关，在centos8安装光盘的isoliinux目录下面
+			├── menu.c32		# 来自于syslinux-nonlinux包，或syslinux-tftpboot包，菜单风格
+			├── pxelinux.0		# 来自于syslinux-nonlinux包，或syslinux-tftpboot包，类似于grub(bootloader)
+			└── pxelinux.cfg
+				└── default		# 复制光盘下的 isolinux.cfg 文件，拷贝到这个目录，并改名为 default，这就是启动菜单文件
+
+
+cobbler实现系统自动化部署
+    Cobbler是一款Linux生态的自动化运维工具，基于Python2开发，用于自动化批量部署安装操作系统；其提供基于CLI的管理方式和WEB配置界面，WEB配置界面是基于Python2和Django框架开发。cobbler还提供API方便二次开发。Cobbler属于C/S模型
+    Cobbler主要用于快速网络安装linux操作系统，支持众多的Linux发行版如：Red Hat、Fedora、CentOS、Debian、Ubuntu和SuSE等，甚至支持Windows的安装
+    Cobbler实质是PXE的二次封装，将多种安装参数封装到一起，并提供统一的管理方法。官方文档: https://cobbler.readthedocs.io/en/latest/index.html
+
+    安装Cobbler及其相关的服务和组件：
+        yum -y install dhcp cobbler cobbler-web pykickstart	   # Cobbler依赖于epel源，在安装cobbler之前需要配置epel源, CentOS8 目前还没有提供Cobbler相关包，因为centos8上没有提供Python2. 
+        systemctl enable --now cobblerd httpd tftp dhcpd       # 安装cobbler时会自因为依赖而安装httpd、tftp、DHCP等所依赖服务的相关包.如果有web界面要求，还需要安装相关的组件. 
+        
+        相关包说明：
+            httpd：提供yum源，并配合cobbler-web使得cobbler可以通过web网页界面进行配置管理
+            tftp-server：提供启动和菜单等相关文件网络下载功能
+            cobbler-web : 提供基于web的cobbler管理界面
+            pykickstart.noarch : 基于python的管理kickstart文件的库
+        
+ 
+
+ 

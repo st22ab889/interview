@@ -1,0 +1,481 @@
+========================================================================sudo====================================================================
+
+sudo
+    sudo 解决了 使用 su 时必须要先告知超级用户的密码. 
+    sudo能够授权指定用户或用户组在指定主机上运行某些命令.使用sudo以超级用户的权限运行,之后的一段时间内(默认5分钟，可在/etc/sudoers自定义),再次使用sudo不需要再次输入密码.
+    安全要求较高的地方通常都需要sudo授权，很多企业为了安全都不让直接用root登录，必须经过sudo授权才能操作，平时管理都是用普通用户，以此减少误操作
+
+    所在包：sudo
+	配置文件(属性必须为0440)：/etc/sudo.conf
+	授权规则配置文件：
+		/etc/sudoers                # 此文件一般不动.属性必须为0440. 有项配置为"includedir /etc/sudoers.d",默认注释. 
+		/etc/sudoers.d/             # 把各种授权分门别类放在此目录,适合复杂环境的授权,比如针对项目、部门等集体单位或个人分别授权.授权文件应该和sudoers文件的权限保持一致
+	安全编辑授权规则文件和语法检查工具(不要用vim,没有语法检查功能,一项语法错误会影响整个配置): /usr/sbin/visudo
+        visudo -c                               # 检查语法                         
+        visudo -f /etc/sudoers.d/test           # 检查指定配置文件的语法  
+    授权编辑规则文件的工具：/usr/bin/sudoedit
+	执行授权命令：/usr/bin/sudo
+    时间戳文件：/var/db/sudo
+	日志文件：/var/log/secure
+
+
+    sudo [-u user] COMMAND
+        -i              # 以目标用户身份运行登录shell
+		-V              # 显示版本信息等配置信息
+		-u              # ser 默认为root
+		-l,ll           # 列出用户在主机上可用的和被禁止的命令
+		-v              # 再延长密码有效期限5分钟,更新时间戳
+		-k              # 清除时间戳（1970-01-01），下次需要重新输密码
+		-K              # 与-k类似，还要删除时间戳文件
+		-b              # 在后台执行指令
+		-p              # 改变询问密码的提示符号. 示例：-p "password on %h for user %p: "
+
+        sudo -i -u admin    # 切换身份功,能和su相似,但不一样,sudo必须提前授权,而且要输入自已的密码
+
+
+    授权规则配置文件
+        支持通配符
+            ? 			# 任意单一字符
+            * 			# 匹配任意长度字符
+            [wxc] 		# 匹配其中一个字符
+            [!wxc] 		# 除了这三个字符的其它字符
+            \x 			# 转义
+            [[alpha]] 	# 字母        
+
+            示例：
+                /bin/ls [[alpha]]*
+        
+        配置文件规则有两类
+            (1).别名定义：不是必须的
+		    (2).授权规则：必须的
+
+        sudoers授权规则格式：
+            user host=(runas) command           # user、host、runas、command 都可以定义为别名
+                user：给user这个用户授权
+                host：通过哪些主机登入,可以写ip,多个ip用逗号隔开，只有是这些ip的主机才能登录. 这个配置写好后一般会同步到很多主机,一般写ALL,表示不限制登入的主机
+                runas：授权用户代表一个具有管理员权限的人，一般root。这里如果是ALL，就代表是root
+                command：能运行哪些命令，如果有多个命令，命令之间可以用逗号隔开，也可以写成多行授权的形式.
+            
+            授权字段支持的写法：
+                User和runas:
+                    username				 	# 直接写用户名
+                    #uid					 	# 写用户的UID，前加 #		
+                    %group_name				 	# 写组名称，前面加 %
+                    %#gid					 	# 写组id，前面加 %#
+                    user_alias|runas_alias		# 用户别名	
+                host:
+                    ip或hostname				# 写主机IP 或 主机的hostname
+                    network(/netmask)			# 子网掩码
+                    host_alias					# 主机别名
+                command:
+                    command name				# 命令
+                    directory					# 写目录，这个目录下的命令都会被授权给用户
+                    sudoedit					# 授权用户有权限操作"/etc/sudoers"文件和"/etc/sudoers.d/"目录
+                    Cmnd_Alias					# 命令的别名
+
+            sudoers的别名：
+                User_Alias
+                Runas_Alias
+                Host_Alias
+                Cmnd_Alias
+                
+                别名格式：
+                    [A-Z]([A-Z][0-9]_)*				# 必须是大写字母和数字组合，而且大写字母必须放在前面
+                    
+                别名定义：
+                    Alias_Type NAME1 = item1,item2,item3 : NAME2 = item4, item5		# 多个的话，中间用冒号隔开
+
+    修改ubuntu的visudo的默认编辑器, ubuntu上visudo的默认编辑器是 nano
+        export EDITOR=vim	   # 把"export EDITOR=vim"写到"/root/.profile"文件中，可以永久生效，修改后使用". .profile"命令使配置马上生效
+
+
+    示例:
+        visudo                                          # 等价 visudo /etc/sudoers
+        %wheel  ALL=(ALL)       ALL						# 如果以"%"开头，表示是对组授权.系统中默认就有 wheel 这个组
+        #%wheel        ALL=(ALL)       NOPASSWD: ALL	# NOPASSWD 表示使用sudo时不用输入密码，好处是在脚本中使用sudo，不会被要求输入密码.
+        xiaoming    ALL=(root)       /usr/bin/mount /dev/cdrom /mnt/,/usr/bin/umount    # 注意：命令要写成绝对路径的形式
+            如果 sudoers 文件中的规则为"/usr/bin/mount /dev/cdrom", 表示用户可以把"/dev/cdrom"目录挂载到任意目录
+            如果 sudoers 文件中的规则为"/usr/bin/mount", 表示用户可以任意使用 mount 命令
+        root    ALL=(ALL)       ALL					    # 注释这一行不影响root权限，这个配置平常用不上. 
+            root 具有最高权限的唯一原因是 uid 为 0, 所以即使注释掉"/etc/sudoers"中的对root授权的配置, root用户仍然具备管理员权限
+            但在"/etc/sudoers"中对root授权的配置在特定情景下也有用处. 比如将其它用户的id换为0, root换为其它非0的id, 如下:
+                sudo -u zkh cat /etc/shadown          # 假如zkh的id为0, -u 是指定管理员, 默认为root. 但现在zkh是管理员,所以要显示指定
+        ang ALL=(ALL) sudoedit	                      # ALL=(ALL) 也可简写为  ALL=  
+    
+
+     示例:别名的用法
+        cat /etc/sudoers.d/test
+        User_Alias SYSADER=wang,xiaohong,%admins				# User_Alias 表示用户别名，
+        User_Alias DISKADER=tom
+        Host_Alias SERS=www.abc.com,172.16.0.0/24				# Host_Alias 表示主机别名
+        Runas_Alias OP=root										# Runas_Alias 表示要代表的用户的别名
+        Cmnd_Alias SYDCMD=/bin/chown,/bin/chmod					# Cmnd_Alias 表示命令别名
+        Cmnd_Alias DSKCMD=/sbin/parted,/sbin/fdisk
+        SYSADER SERS= SYDCMD,DSKCMD								# 使用别名
+        DISKADER ALL=(OP) DSKCMD								# 使用别名
+
+
+    示例:在命令中使用通配符
+        情景1：
+            cat /etc/sudoers.d/test
+            wang ALL=(ALL) /bin/cat /var/log/messages*				#这种写法有漏洞
+            
+            sudo cat /var/log/messages /etc/shadow					#被授权的用户可以通过这种方式访问被限制的文件, 在官方文档中对这种情况有说明
+            
+            man sudoers
+            will allow command like:
+            $ sudo cat /var/log/messages.1
+            It will also allow:
+            $ sudo cat /var/log/messages /etc/shadow
+        
+        情景2：
+            cat /etc/sudoers.d/test
+            zkh 192.168.1.6,192.168.1.8=(root) /usr/sbin/,!/usr/sbin/useradd 	  # zkh 可以运行"/usr/sbin/"目录下所有的命令，但是useradd除外，"!"表示否定  
+
+
+    示例:
+        visudo /etc/sudoers
+        Defaults env_reset , timestamp_timeout=2            # 修改验证密码间隔为2分钟，默认间隔为5分钟
+
+        sudo -V	        # 查看 sudo 的基本信息				
+        Authentication timestamp timeout: 2.0 minutes......
+		
+
+    示例:安装 ubuntu 后普通用户有sudo权限
+        root@ubuntu1804:~# grep %sudo /etc/sudoers
+        %sudo ALL=(ALL:ALL) ALL									# "ALL:ALL"表示这个主机上的"任何用户"和"任何组"
+        
+        id zkh                          # 安装ubuntu时使用的账户默认已经加到了sudo组中
+        uid=1000(zkh) gid=1000(zkh) groups=1000(wang),4(adm),24(cdrom),27(sudo),30(dip),46(plugdev),108(lxd),113(lpadmin),114(sambashare)
+
+
+    示例:
+        sudo -i                         # 切换为root身份，输自己的密码切换成root，之后命令前不用再加 sudo
+        sudo -l                         # 查看被授权了哪些操作
+        sudo cat /etc/shadow	        # 默认是代表root 等价于 sudo -u root cat /etc/shadow
+        sudo -u zkh cat /etc/shadow     # 如果是代表非root用户，要用 -u 选项显示指明          
+
+
+=========================================================================PAM====================================================================
+
+PAM(Pluggable Authentication Modules):  PAM是一个架构，只是一个平台，提供了规范、接口! 使用PAM的前提是应用程序支持并接入PAM框架！
+    
+PAM提供了三种接口，官方站点提供对应的3个手册：
+    PAM-API接口: 面对应用开发者，应用只要调用PAM的API接口，就能实现对应用的认证
+    PAM-SPI接口: 面对安全模块开发者，通过PAM的SPI接口来接入认证的具体逻辑
+    PAM的配置接口: 系统管理员管理PAM的配置，比如让某个服务能够选择性的调用某个模块，用哪种验证方法等    
+
+PAM相关文件
+    包名: pam
+    模块文件目录：/lib64/security/*.so 
+        一个so文件就对应一个模块, 每个模块都有自己负责的功能，
+    特定模块相关的设置文件：/etc/security/
+        pam不会把说有的模块配置文件都放在一起，一个模块对应一个配置文件，但不是所有模块都有配置文件!
+        一些复杂的模块才有配置文件，比如时间，会定义一些和时间相关的规则！
+        模块比较简单，就不会提供专门的配置文件，如果有参数，参数直接跟在模块名称的后面！
+    应用程序调用PAM模块的配置文件
+        主配置文件：/etc/pam.conf，默认不存在，一般不使用主配置
+        为每种应用模块提供一个专用的配置文件：/etc/pam.d/APP_NAME 。如果 /etc/pam.d 存在，/etc/pam.conf 将失效 
+
+PAM模块帮助
+    官方在线文档：http://www.linux-pam.org/Linux-PAM-html/
+    官方离线文档：http://www.linux-pam.org/documentation/
+    pam模块文档说明：/user/share/doc/pam-*
+        rpm -qd pam
+        rpm -ql pam
+        man -k pam
+        man 8 nologin       # man 模块名
+
+只要应用程序支持pam(调用了"libpam.so"),就可以通过配置文件来配置应用程序调用哪一个pam模块
+    PAM认证顺序: Service(服务) --> libpam.so + PAM(配置文件) --> pam_*.so     
+    维工程师关注两个目录：
+            /etc/pam.d/        
+            /etc/security/     # pam 的模块配置目录，有些模块比较复杂，可能会更改配置
+    查看程序是否支持PAM
+        ldd `which sshd` | grep pam
+
+
+PAM 配置文件格式说明；
+    (了解,此格式不使用)通用配置文件 /etc/pam.conf
+        application type control module-path arguments   
+            字段说明：  
+                application：指服务名，如：telnet、login、ftp等，服务名字“OTHER”代表所有没有在该文件中明确配置的其它服务
+    
+    专用配置文件 /etc/pam.d/$APP_NAME
+        type control module-path arguments    
+        
+        字段说明：
+            type：指模块类型，即功能
+            control：PAM库该如何处理与该服务相关的PAM模块的成功或失败情况，一个关健词实现
+            module-path：用来指明PAM模块文件的路径名
+            Arguments：用来传递给该模块的参数
+    
+        模块类型（module-type）	
+            Auth 账号的认证和授权
+            Account 帐户的有效性，与账号管理相关的非认证类的功能，如：用来限制/允许用户对某个服务的访问时间，限制用户的位置(例如：root用户只能从控制台登录)
+            Password 用户修改密码时密码复杂度检查机制等功能
+            Session 用户会话期间的控制，如：最多打开的文件数，最多的进程数等
+            -type 表示如果这个模块没有了或安装的时候没有这个模块文件，-type表示没有这个模块也不报错，也不记录日志，也就是说模块可有可无！
+            
+        Control:
+            required：一票否决，表示本模块必须返回成功才能通过认证，但是如果该模块返回失败，失败结果也不会立即通知用户，而是要等到同一type中的所有模块全部执行完毕，再将失败结果返回给应用程序，即为必要条件.
+            requisite：一票否决，该模块必须返回成功才能通过认证，但是一旦该模块返回失败，将不再执行同一type内的任何模块， 而是直接将控制权返回给应用程序。是一个必要条件     
+            sufficient：一票通过，表明本模块返回成功则通过身份认证的要求，不必再执行同一type内的其它模块，但如果本模块返回失败可忽略，即为充分条件，优先于前面的required和requisite                           
+            optional：表明本模块是可选的，它的成功与否不会对身份认证起关键作用，其返回值一般被忽略
+            include： 调用其他的配置文件中定义的配置信息
+
+        module-path
+            lib64/security 目录下的模块可使用相对路径，如：pam_shells.so、pam_limits.so
+            有些模块有自已的专有配置文件，在 /etc/security/*.conf 目录下
+            
+        Arguments
+            debug：该模块应当用syslog()将调试信息写入到系统日志文件中
+            no_warn：表明该模块不应把警告信息发送给应用程序
+            use_first_pass：该模块不能提示用户输入密码，只能从前一个模块得到输入密码
+            try_first_pass：该模块首先用前一个模块从用户得到密码，如果该密码验证不通过，再提示用户输入新密码
+            use_mapped_pass：该模块不能提示用户输入密码，而是使用映射过的密码
+            expose_account：允许该模块显示用户的帐号名等信息，一般只能在安全的环境下使用，因为泄漏用户名会对安全造成一定程度的威胁	
+        
+        注意：修改PAM配置文件将马上生效(退出重新登录就生效)
+        建议：编辑pam规则时，保持至少打开一个root会话，以防止root身份验证错误 
+    
+
+    范例: sshd的PAM配置文件
+        cat /etc/pam.d/sshd                             # 服务的PAM配置文件名称就是服务的名称
+        #%PAM-1.0
+        auth       required     pam_sepermit.so 		# 这里auth有多个，表示都和认证相关.如果模块在"/lib64/security/"目录下，可以写相对路径，不在可以写绝对路径
+        auth       substack     password-auth
+        auth       include      postlogin				# 表示引用当前目录下的 postlogin 文件
+        # Used with polkit to reauthorize users in remote sessions
+        -auth      optional     pam_reauthorize.so prepare       # 后面跟的"prepare"是模块的参数，如果模块很复杂，参数会放在模块专用的配置文件中
+
+
+常用的PAM模块
+    pam_shells.so                       # 检查有效shell, 比如不允许使用 /bin/csh 的用户本地登录.
+        man pam_shells 
+        yum -y install csh
+        
+        vim /etc/pam.d/login
+        auth required pam_shells.so     # login 命令增加一个pam认证，"pam_shells.so"只允许用户使用"/etc/shells"文件中列出的shell登录
+        
+        #vim /etc/shells
+        # /bin/csh                      # 注释掉 csh 
+
+        useradd -s /bin/csh testuser    # testuser将不可登录
+        /var/log/secure                 # 文件中会记录pam验证不过的日志,也就是登录失败的日志    
+
+
+    pam_securetty.so                    # 只允许root用户在/etc/securetty列出的安全终端上登陆.Centos8默认没有"/etc/securetty",centos7有此文件
+        yum -y install telnet            # CentOS7、8都需要安装telnet
+        
+        grep pam_securetty /etc/pam.d/*
+        /etc/pam.d/remote:auth       required     pam_securetty.so      # Centos7 上 telnet 默认不允许root直接登录,就是因为有 pam_securetty.so 模块校验     
+
+        cat /etc/pam.d/remote	        # remote虽然没有和telnet这个应用程序的名称保持一致，但是 telnet 仍然内部使用了 remote 的配置         
+        #%PAM-1.0
+        auth       required     pam_securetty.so		# Centos8 的 remote 文件默认没有这项配置
+
+        允许root使用telnet登陆远程主机的两种方法：
+            方法1：修改"/etc/securetty"文件，里面加入使用telnet的终端
+                vim etc/securetty
+                ......省略
+                pts/0						# 可以使用"tty"命令查看使用的终端
+                pts/1
+                ......省略
+                
+            方法2：修改"/etc/pam.d/remote" 文件
+                vim /etc/pam.d/remote
+                #%PAM-1.0
+                #auth       required     pam_securetty.so		# 注释和删除这一行
+                ......省略
+
+
+    (重要)pam_nologin.so
+        功能：如果/etc/nologin文件存在,将导致非root用户不能登陆,当该用户登陆时，会显示/etc/nologin文件内容，并拒绝登陆
+        使用场景：在生产中，这个模块可以临时禁用普通用户登录，比如做系统维护时，希望普通用户不要登录
+
+        grep pam_nologin /etc/pam.d/*                   # login、remote、sshd 都用到了"pam_nologin"模块, 但是 su 命令没有用到
+        login:account required pam_nologin.so
+        remote:account required pam_nologin.so
+        sshd:account required pam_nologin.so
+
+        echo pam_nologin deny login > /etc/nologin      # 创建"/var/run/nologin" 或 "/etc/nologin"就能触发禁止普通用户登录的条件
+
+        ssh -p 22 aaron@192.168.32.100
+        pam_nologin deny login                          # 使用 ssh 登录失败，并且错误信息显示的是"/etc/nologin"文件中的内容
+
+        su - aaron            # 从 root 可以切换为普通用户,因为"/etc/pam.d/su"文件中没有配置"pam_nologin.so"模块
+
+        vim /etc/pam.d/su
+        #%PAM-1.0
+        account    		required     	pam_nologin.so  # 在"/etc/pam.d/su"文件中配置"pam_nologin.so"模块，禁止通过su命令切换为普通用户
+        auth            sufficient      pam_rootok.so
+        ......省略                             
+
+        su - aaron                  # 通过 su 命令切换为普通用户失败
+        pam_nologin deny login
+
+        rm -rf /etc/nologin                 # 删除"/etc/nologin"文件，恢复普通用户登录行为 
+        su - aaron                          # 恢复正常
+        ssh -p 22 aaron@192.168.32.100      # 恢复正常
+
+
+   (至关重要)pam_limits.so
+        功能：在用户级别实现对其可使用的资源的限制，保证系统不至于过载。例如：可打开的文件数量，可运行的进程数量，可用内存空间
+        使用场景: limit模块在生产中作为一个标配，系统装好后，配置服务器的时候就要修改limit模块的配置文件，默认设置往往较保守，不能充分利用系统资源
+
+        yum -y install httpd-tools	                # httpd-tools是压力测试工具，用来测试服务器性能，可以模拟很多客户端
+	    systemctl start nginx
+
+        ab -c 1025 -n 2000 http://192.168.32.100/	# 同时打开1025个连接，linux中一切皆文件，相当于同时打开1000个socket文件    
+        socket: Too many open files (24)			# 请求文件过多
+
+        help ulimit                                 # 查看 ulimit 帮助
+        ulimit -a                                   # -a 查看当前资源限制, 其中"open files"默认定义为1024,说明最多只能打开1024个文件
+        ulimit -n                                   # -n 打开文件描述符的最大数量
+        ulimit -n 10240                             # 重新设置文件描述符的最大数量，临时生效
+        ab -c 1025 -n 2000 http://192.168.32.100/	# 重新设置后测试，请求正常
+
+        rpm -ql pam | grep limit
+        /etc/security/limits.conf                   # pam_limits.so 模块比较复杂，所以提供了一个专用的配置文件。
+        
+        grep pam_limits.so /etc/pam.d/*             # 查看哪些应用程序调用limits模块，可以看到limit这个模块被系统中很多资源调用   
+        /etc/pam.d/fingerprint-auth:session     required      pam_limits.so		# session 就是用户登录后会话期间/登录期间
+
+        cat  /etc/security/limits.conf
+        ......
+        #This file sets the resource limits for the users logged in via PAM.
+	    #It does not affect resource limits of the system services.				# 这些限制对系统服务无效
+        ......
+        #<domain> can be:
+        #        - a user name
+        #        - a group name, with @group syntax
+        #        - the wildcard *, for default entry					# * 表示所有人
+        #        - the wildcard %, can be also used with %group syntax,
+        #                 for maxlogin limit							# maxlogin 最多能登录多少个用户
+        #
+        #<type> can have the two values:					
+        #        - "soft" for enforcing the soft limits					# 软限制：超用资源会报警(短时间超用资源也可以)
+        #        - "hard" for enforcing hard limits						# 硬限制: 强制性的	
+        #																# 写为"-"表示 软限制 和 硬限制 设为一样的值
+        #<item> can be one of the following:				            # item 表示各种资源
+        #        - core - limits the core file size (KB)				# 核心文件，指的是内存
+        #        - data - max data size (KB)							# 数据文件
+        #        - fsize - maximum filesize (KB)						# 最大文件大小
+        #        - memlock - max locked-in-memory address space (KB)	# 内存锁
+        #        - nofile - max number of open file descriptors			# 最多能打开多少个文件
+        #        - rss - max resident set size (KB)
+        #        - stack - max stack size (KB)
+        #        - cpu - max CPU time (MIN)
+        #        - nproc - max number of processes						# 最多有多少个进程
+        #        - as - address space limit (KB)
+        #        - maxlogins - max number of logins for this user		# 最多有多少用户能登录系统
+        #        - maxsyslogins - max number of logins on the system
+        #        - priority - the priority to run user process with
+        #        - locks - max number of file locks the user can hold
+        #        - sigpending - max number of pending signals
+        #        - msgqueue - max memory used by POSIX message queues (bytes)
+        #        - nice - max nice priority allowed to raise to values: [-20, 19]
+        #        - rtprio - max realtime priority
+        #
+        #<domain>      <type>  <item>         <value>
+        #
+
+        #*               soft    core            0			# 范例，*表示所有人，soft表示软限制，core 表示资源，0表示资源使用的值
+        #*               hard    rss             10000
+        #@student        hard    nproc           20			# 表示 student 这个组打开的进程不能超过20个
+        #@faculty        soft    nproc           20
+        #@faculty        hard    nproc           50
+        #ftp             hard    nproc           0
+        #@student        -       maxlogins       4
+
+        vim  /etc/security/limits.conf
+	    aaron         -       nproc       5         # 限制aaron账号最多开启5个进程(4个正常+1个失败), "-"表示软限制和硬限制一样，这样就不用写两行，中间空格无个数限制，隔开就行
+        aaron 		- 		maxlogins 		2       # 限制用户最大的同时登录次数
+
+            注意事项：
+                如果重新修改了配置,比如把开启最大进程数由5改为10，用户需要重新注销所有登录后再登录才会重新生效。比如aaron登录了10个终端，要退出这10个终端后，再登录才会生效
+                pam 的 session 会记录一些日志，对于一些资源限制，通过日志的提示也能看出来.如果因为pam设置导致资源或某个服务出现问题，可以先观察日志，看是否是因为一些资源被pam限制
+               
+
+        pam_limits.so 模块推荐配置：以下参数值和企业服务器、以及负载都有关系，下面只是建议值。服务器性能好，可以设的更大，性能不好，值可以设的小些
+            *                soft    core            unlimited
+            *                hard    core            unlimited
+            *                soft    nproc           1000000
+            *                hard    nproc           1000000
+            *                soft    nofile          1000000
+            *                hard    nofile          1000000
+            *                soft    memlock         32000
+            *                hard    memlock         32000
+            *                soft    msgqueue        8192000
+            *                hard    msgqueue        8192000   
+
+
+    (了解)pam_succeed_if
+        功能：参数中的所有条件都满足才返回成功
+        案例：ubuntu默认不允许root登录桌面图形, 只能使用普通用户登录，然后使用sudo切换为root
+
+        vim /etc/pam.d/gdm-passwd           
+        #auth requried pam_succeed_if.so user !=root quiet_success		# 将这行注释.用root登录桌面失败，查看日志，可看到pam原因
+
+
+    (实用)pam_google_authenticator
+        提供了MFA(Multi-Factor Authentication)功能, MFA是一种多因子验证
+
+        示例: pam_google_authenticator 模块支持基于ssh的密码验证
+            rpm -ql pam | grep google                       # 系统默认没有 pam_google_authenticator 模块
+            #yum install -y epel-release.noarch             # 系统如果没有epel源,先安装
+            yum makecache
+            yum install -y google-authenticator.x86_64 
+            
+            google-authenticator                            # 运行此程序
+                ......省略
+                Do you want authentication tokens to be time-based (y/n) y
+                Warning: pasting the following URL into your browser exposes the OTP secret to Google:
+                https://www.google.com/chart?chs=200x200&chld=M|0&cht=qr&chl=otpauth://totp/root@localhost.localdomain%3Fsecret%3DMCJTBA4MP4DEY3S6Q33F3IQOUQ%26issuer%3Dlocalhost.localdomain
+                ......这里显示二维码图片，用下载的APP或微信小程序 MinaOTP扫描此二维码，会生成校验码，校验码隔一段时间会改变。访问上面衔接可以在线生成二维码......
+                Your new secret key is: MCJTBA4MP4DEY3S6Q33F3IQOUQ
+                Your verification code is 450871
+                Your emergency scratch codes are:	 
+                94854951			# 这些校验码是用来紧急使用的，比如手机丢失，app被卸载等情况，就可以使用
+                92917018			# 这些紧急使用的二维码用一次就失效
+                39307830
+                21332895
+                16542293
+                
+                Do you want me to update your "/root/.google_authenticator" file? (y/n) y
+                ......
+
+            sed -i '1a\auth       required     pam_google_authenticator.so' /etc/pam.d/sshd         # 添加1行
+            sed -i 's/.*ChallengeResponseAuthentication.*/ChallengeResponseAuthentication yes/' /etc/ssh/sshd_config    # ChallengeResponseAuthentication 把no改为yes
+            service sshd restart	
+
+            ll /root/.google_authenticator          # 这个文件记录的是紧急时候使用的校验码，这个校验码用一个就会从这个文件删除一个.也可以人为在这里添加校验码，格式要正确，使用8位数字
+            ssh -p 22 root@192.168.32.100           # 先从手机或app上获取校验码输入, 再输入登录密码
+            cat /var/log/secure                     # 记录认证相关的日志
+
+
+        示例: pam_google_authenticator 模块支持基于ssh的key验证
+            ssh-keygen
+            ssh-copy-id 192.168.32.100
+            ssh 192.168.32.100                      # 登录成功，说明 pam_google_authenticator 模块对基于ssh的key验证登录不起作用
+
+            vim /etc/ssh/sshd_config                # 在被登录的机器上操作
+		    AuthenticationMethods publickey,keyboard-interactive
+
+            vim /etc/pam.d/sshd                      # 在被登录的机器上操作
+		    #auth substack password-auth			 # 注释此行
+
+            ssh 192.168.32.100                       # 输入正确的验证码，登录成功，这种情况丢了密码、私钥都能登录
+
+        说明:
+            pam_google_authenticator 模块只是控制ssh登录，不能控制本地登录！  使用 pam_google_authenticator 模块，每个机器的校验码都不一样！
+            很多企业就在用这种方式校验身份，比较安全！
+
+
+    其它模块(了解):
+        ll /lib64/security/
+        -rwxr-xr-x. 1 root root   7040 Apr  1  2020 pam_shells.so	# 验证使用哪种shell
+        -rwxr-xr-x. 1 root root  11248 Apr  1  2020 pam_rootok.so	# 验证是不是root
+        -rwxr-xr-x. 1 root root  15368 Apr  1  2020 pam_time.so		# 根据时间访问(什么时候可以访问，什么时候不可以访问).此模块也有专门的配置文件"/etc/security/time.conf" 
+
