@@ -12,9 +12,9 @@ shutdown
 	+#: 相对时间表示法，几分钟之后；例如 +3
 	hh:mm: 绝对时间表示，指明具体时间
 
-hash
-hash -d who
-hash -r
+hash			# 管理 Shell 会话中已执行命令的路径缓存（哈希表）
+hash -d who		# 清楚指定的命令从hash表
+hash -r			# 清楚hash表
 
 type echo
 type -a echo
@@ -74,7 +74,13 @@ timedatectl status | ist-timezones | set-timezone xxxx
 cal 05 2025
 
 echo -n
-echo -e
+echo -e "\033[31m红色字\033[0m"		# -e选 使用反斜线来进行字符转换，从而实现对文本的格式化输出
+echo -e "\e[33;44m黄字蓝底\e[0m"		# 和上面行等价，
+	ANSI 转义序列是用于控制终端文本格式和颜色的标准代码
+	\033[31m：ANSI 转义序列的起始标记，用于设置文本颜色为红色。
+	\033[0m：ANSI 转义序列的结束标记，用于恢复终端默认样式。
+
+
 
 file /usr/bin/hostname
 stat 文件名
@@ -92,7 +98,7 @@ type :										# ":" 是个内部命令，永远返回真
 
 pwd
 ls				# 生产环境中, 如果目录下文件太多，慎用ls，会导致死机
-ls -lSrah
+ls -lSrah		# S 按大小排序，r 表示逆序
 ls -lrtah
 ls -d
 ls -lR  /etc	# 查看文件夹以及里面子文件夹里面的文件
