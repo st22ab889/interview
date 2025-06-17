@@ -1,3 +1,6 @@
 [submodule "terraform"]
 	path = terraform
 	url = git@github.com:st22ab889/terraform.git
+[submodule "ansible"]
+	path = ansible
+	url = git@github.com:st22ab889/ansible.git
