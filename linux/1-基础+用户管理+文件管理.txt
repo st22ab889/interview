@@ -200,8 +200,8 @@ tr 'a-z' 'A-Z'						# 小写转大写
 tr -d 'abc'							# 删 abc
 tr -s 'a'							# 相同连续的缩为一个
 df | tr -s ' ' 
-tr -d '\r' < win.txt > linux.txt	# 文本转换 
-
+tr -d '\r' < win.txt > linux.txt							# 文本转换 
+cat /dev/urandom | tr -dc '[:alnum:]' | head -c12			# -c 对除了指定字符之外的所有字符进行转换或删除.   "echo "abc123def456" | tr -cd '0-9'" 输出 123456
 
 ls | tee test.log					# 保存到文件 + 打印到屏幕 ,清空 test.log	 
 ls | tee -a test.log				# -a 追加内容到 test.log	
@@ -209,15 +209,21 @@ ls | tee -a test.log				# -a 追加内容到 test.log
 
 wget "https://github.com/ylx2016/Linux-NetSpeed/raw/master/tcpx.sh" 
 wget -O tcp-plus.sh "https://github.com/ylx2016/Linux-NetSpeed/raw/master/tcpx.sh" 
-wget -O - "https://github.com/ylx2016/Linux-NetSpeed/raw/master/tcpx.sh"				# "-" 表示只显示内容,不保存到文件. 和 ">"相反
+wget -O - "https://github.com/ylx2016/Linux-NetSpeed/raw/master/tcpx.sh"
+	-O	指定下载文件的保存路径和名称（覆盖默认文件名）
+	"-" 表示只显示内容,不保存到文件. 和 ">"相反
+	-c	断点续传（Resume），恢复中断的下载（如网络中断后继续下载）。
+	-q	静默模式（Quiet），不输出下载进度信息，只显示错误。	
+	-P	指定下载文件的保存目录（不改变文件名）。
+	--no-check-certificate	跳过 SSL 证书验证（用于自签名证书的网站）。
 
 
-(wh0;hostname) > all.log
+(who;hostname) > all.log
 { who;hostname;} > all.log 			# 注意空格和分号 
 
 
 echo test | read X ; echo $X			# 没有打印出"test"的原因时，管道符"|"会开启一个子进程。也就是说"read X"在子进程中运行，"echo $X"在父进程中运行
-echo test | { read X ; echo $X; }		# 加{}可以让命令在一个进程中运行, 加{}是最后一个命令要加";"号，而且要前后要留空格
+echo test | { read X ; echo $X; }		# 加{}可以让命令在一个进程中运行, 加{}是最后一个命令要加";"号，"{"后要留分号, "}"可不留，最好前后都留
 echo test | ( read X ; echo $X )     	# 加()可以让命令在一个进程中运行, 最后一个命不用加";"号，前后也可以不留空格
 
 >			# 标准输出重定向 
@@ -257,11 +263,10 @@ groupadd -g 48 -r apache
 groupmod -n newname -g 500 oldname		
 groupdel -f name						 
 newgrp 组名								# 临时切换当前登录用户的主组，可以使用exit退出来. (了解)
-groupmems -l -g 附加组名
+groupmems -l -g 附加组名				# 查看组成员
 groupmems -a 用户 -g 附加组名			# groupmems -g root -a aaron
 groupmems -d 用户 -g 附加组名
 
-cat /dev/urandom | tr -dc '[:alnum:]' | head -c12			# -c 对除了指定字符之外的所有字符进行转换或删除.   "echo "abc123def456" | tr -cd '0-9'" 输出 123456
 
 change  							# 了解.  change -d 0 用户 ，下次登录强制重新改密码
 passwd 用户							# 重点
@@ -274,7 +279,7 @@ echo 新密码 | passwd --stdin 用户
 ====================================================================文件权限管理=================================================================
 
 su 用户名			# 保留当前一些身份信息，比如系统环境
-su - 用户名			# 不保留，完全切换 . -l 选项等价于 -
+su - 用户名			# 不保留，完全切换 . -l (--login) 选项等价于 -
 su root -c cat /etc/shadow
 
 
@@ -287,15 +292,19 @@ chmod u=,g=r,o=rwx 文件
 chmod a= 文件/文件夹			# 取消所有权限
 chmod 640 文件/文件夹
 chmod 600 文件/文件夹			# 一个文件能不能删除，不要看文件本身的权限，要看文件夹的权限. 用户对文件夹有写权限，就对里面的的文件有删除的权限
-	对于文件夹来说，要么rx都给，要么都不给，r控制的是能不能看文件，x控制的是能不能cd进目录; w控制的是能不能改文件.
+							   # 对于文件夹来说，要么rx都给，要么都不给，r控制的是能不能看文件，x控制的是能不能cd进目录; w控制的是能不能改文件.
 chmod -R 600 文件夹	
 chmod -R a+X dir				# 大写X，表示给只给这个目录里面的文件夹加x权限.(了解)
 
-umask							# 默认是 0022， 第一个0表示8进制
+umask -S
+umask							# 默认值通常为 0022 或 0002 (第一个0表示8进制)，具体取决于系统配置和用户环境， 
 	新建文件的默认权限: 666-umask，如果所得结果某位存在执行（奇数）权限，则将其权限+1,偶数不变
 	新建目录的默认权限: 777-umask
 umask 123						# 临时改 , 把这个命令放在家目录下的 .bashrc 中实现永久改
 
+umask永久修改：
+	全局设置：编辑 /etc/profile 或 /etc/login.defs：
+	用户特定设置：编辑 ~/.bashrc 或 ~/.profile：
 
 ===================================================================特殊权限(了解)================================================================
 
@@ -338,7 +347,7 @@ getfacl text.txt
 一旦使用acl设置权限后,使用"ll text.txt"看到的组权限就不是真正的组权限，这里看到的权限是mask的权限(getfacl看到的mask的权限)
 	mask 权限指的是除了文件的 所有者以及other以外的 人的权限的最大权限.
 
-一旦设置acl后，对所属组缩所设的权限就是mask的权限，是所以改mask的权限可以如下：
+一旦设置acl后，对所属组缩所设的权限就是mask的权限，所以改mask的权限可以如下：
 	chmod g=r text.txt	 # 设后如果有人(除了文件的 所有者以及other以外的 人)的权限比r大，会自动降级为r，mask相当于限高杆
 	
 setfacl -x u:wang text.txt						# 删用户的acl权限
@@ -347,7 +356,7 @@ setfacl -b text.txt								# 删所有用户的acl权限
 
 setfacl -m g:admins:rx text.txt   				# 设置组的acl权限，g:组名:rx 
 
-getfacl file1 | setfacl --set-file=- file2		# 复制一个文件的acl给新的文件
+getfacl file1 | setfacl --set-file=- file2		# 复制一个文件的acl给新的文件. 在 Linux 命令中，-（连字符）通常表示 “标准输入” 或 “标准输出”，具体取决于命令的上下文
 
 setfacl --set u::rw,u:wang:rw,g::r,o::- file1	# --set 删除原有的ACL项都，用新的替代,注意:一定要包含UGO的设置，不能象-m一样只是添加ACL就可以
 
