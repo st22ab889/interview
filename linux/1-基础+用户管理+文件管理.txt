@@ -218,6 +218,25 @@ wget -O - "https://github.com/ylx2016/Linux-NetSpeed/raw/master/tcpx.sh"
 	--no-check-certificate	跳过 SSL 证书验证（用于自签名证书的网站）。
 
 
+curl "https://raw.githubusercontent.com/chiakge/Linux-NetSpeed/master/tcp.sh"  		# 直接获取 URL 内容
+	-i	显示响应头信息
+	-s	静默模式（不显示进度）
+	-v	详细模式（显示完整通信过程）	
+	-o	保存内容到指定文件
+	-O	自动使用 URL 中的文件名保存
+	-d	发送 POST 请求（表单数据）  			eg： -d "name=user&age=20"
+	--data-binary	发送二进制数据（如文件）	 eg： --data-binary @image.png
+	-T	上传文件到 FTP/SCP 服务器	 			eg： -T report.pdf ftp://user:pass@ftp.example.com
+	-u	基本认证（用户名：密码）				 eg： curl -u user:pass https://api.example.com
+	--proxy	使用代理服务器						eg： curl --proxy http://proxy:8080 https://example.com
+	--insecure	跳过 SSL 证书验证（自签名证书）	 eg： curl --insecure https://self-signed.example.com
+	-H	添加自定义请求头						 eg： curl -H "Content-Type: application/json" https://api.example.com
+	-X	指定请求方法（GET/POST/PUT/DELETE 等）   eg： curl -X DELETE https://api.example.com/item/123
+	-c	保存 Cookie 到文件						eg： curl -c cookies.txt https://example.com/login
+	-b	从文件读取 Cookie 发送				 	eg：  curl -b cookies.txt https://example.com/profile
+	--trace	跟踪请求过程（调试用）  			 eg：  curl --trace - https://example.com
+
+
 (who;hostname) > all.log
 { who;hostname;} > all.log 			# 注意空格和分号 
 
